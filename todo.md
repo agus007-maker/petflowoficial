@@ -11,7 +11,7 @@
 - [x] Diseñar una interfaz móvil y de escritorio clara, accesible y visualmente distintiva.
 - [x] Incorporar una guía contextual dentro del producto para los flujos principales.
 - [x] Incorporar avisos al responsable por cambio de estado y proximidad de turnos, con registro para evitar avisos duplicados.
-- [ ] Registrar una programación periódica de avisos después de que el sitio esté publicado.
+- [x] Registrar una programación periódica de avisos después de que el sitio esté publicado.
 - [x] Añadir y ejecutar pruebas automatizadas de los flujos críticos.
 - [x] Añadir pruebas de reglas críticas para venta, stock y relación cliente-mascota.
 - [x] Volver a ejecutar la validación técnica después de ampliar la cobertura de pruebas.

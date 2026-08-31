@@ -30,7 +30,7 @@ PetFlow incluye una bandeja de alertas dentro del producto. Cuando se modifica e
 
 > Los recordatorios no se programan desde la vista previa de desarrollo. Primero debe estar publicada la aplicación y después se activa **“Activar avisos automáticos”** desde Alertas.
 
-Una vez activados, los recordatorios se revisan cada 15 minutos. El sistema guarda la fecha de recordatorio emitido en cada turno para impedir duplicados incluso si una ejecución se repite. El aviso actual llega al propietario responsable del proyecto y además queda visible en la bandeja de PetFlow.
+Los recordatorios automáticos ya se encuentran programados con una revisión cada 15 minutos. El sistema guarda la fecha de recordatorio emitido en cada turno para impedir duplicados incluso si una ejecución se repite. El aviso llega al propietario responsable del proyecto y además queda visible en la bandeja de PetFlow.
 
 | Alternativa de aviso | Situación | Requisito adicional |
 | --- | --- | --- |
@@ -51,6 +51,6 @@ Se generó y aplicó una migración de base de datos para el modelo operativo. S
 
 ## Publicación y puesta en marcha
 
-La aplicación queda lista para publicar desde la interfaz del proyecto. Una vez creada la versión de entrega, usá el botón **Publish** de la interfaz. Después de publicar, iniciá sesión en PetFlow, cargá productos y clientes iniciales, configurá el plazo deseado en Alertas, guardá las preferencias y activá los avisos automáticos.
+La aplicación está publicada y disponible mediante la dirección de producción configurada en el proyecto. Para ponerla en marcha, iniciá sesión en PetFlow, cargá productos y clientes iniciales y, si querés modificar el plazo de anticipación, actualizalo en Alertas y guardá las preferencias.
 
 No se configuró una pasarela de pagos ni un canal de mensajería externo, porque el alcance solicitado se concentra en la gestión interna de pet shops. Esas extensiones pueden añadirse en una siguiente etapa si necesitás cobro en línea, facturación fiscal, múltiples empleados, reportes financieros avanzados o comunicaciones por WhatsApp o correo.
