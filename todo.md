@@ -19,3 +19,6 @@
 - [x] Verificar visualmente, en sesión autenticada, los módulos principales de PetFlow.
 - [x] Consolidar el registro de verificación visual después de la revisión completa.
 - [x] Documentar el funcionamiento, la construcción y el despliegue de PetFlow.
+
+- [x] Preparar guía para dominio personalizado y despliegue externo en Vercel o Netlify.
+- [x] Documentar dependencias de hosting, autenticación, base de datos y avisos automáticos para una migración externa.
