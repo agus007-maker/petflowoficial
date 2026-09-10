@@ -8,6 +8,9 @@ const currentFile = fileURLToPath(import.meta.url);
 const publicDir = path.join(path.dirname(currentFile), "public");
 
 app.disable("x-powered-by");
+app.get("/api/health", (_request, response) => {
+  response.status(200).json({ ok: true, service: "petflow", timestamp: new Date().toISOString() });
+});
 app.use(express.static(publicDir, { index: "index.html" }));
 
 // SPA fallback: Supabase redirects and client-side routes must load index.html.
