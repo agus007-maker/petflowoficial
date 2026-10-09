@@ -2,10 +2,6 @@
   command = "pnpm run build"
   publish = "dist/public"
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-  enabled = false
-
 [build.environment]
   NEXT_PUBLIC_SUPABASE_URL = "https://msrcjsrfwkolxlngvdvn.supabase.co"
   NEXT_PUBLIC_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zcmNqc3Jmd2tvbHhsbmd2ZHZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNTgxMDcsImV4cCI6MjEwMjYzNDEwN30.CMW05AluLSKHg3h1HwfxCrvtAc7l-ETgDFNwwkN6hyM"
