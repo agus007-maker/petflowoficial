@@ -12,7 +12,6 @@
     "test": "vitest run",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "validate:supabase": "python3 scripts/validate-supabase-schema.py",
-    "validate:audit-cash": "python3 scripts/validate-audit-cash.py",
     "import:legacy": "node scripts/import-legacy-data.mjs"
   },
   "dependencies": {

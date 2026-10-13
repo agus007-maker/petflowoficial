@@ -1,6 +1,8 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { supabaseAnonKey as publishableKey, supabaseUrl } from "./config";
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
 function required(value: string | undefined, name: string): string {
   if (!value) {
