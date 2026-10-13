@@ -1,7 +1,8 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CalendarDays, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Download, Edit3, LoaderCircle, LogOut, PackageSearch, PawPrint, Plus, Printer, ReceiptText, Search, ShoppingCart, Users, X } from "lucide-react";
+import "./PetFlowPos.css";
 import { createClient, getPublicAppUrl } from "@/lib/supabase/client";
 import { downloadTicketPdf, paymentLabel, printTicket } from "@/lib/tickets";
 import { prepareSaleRequest, validateProductDraft } from "@/lib/petflow-rules";
@@ -89,7 +90,7 @@ export default function PetFlowApp() {
   if (!user) return <AuthCard onSubmit={signIn} notice={notice} />;
   if (!shop) return <ShopSetup onSubmit={createShop} notice={notice} />;
   const unread = notes.filter(note => !note.read_at).length;
-  return <main className="app-shell"><aside className="side"><div className="brand"><PawPrint /><span>pet<span>flow</span></span></div><p className="shop-name">{shop.name}</p><nav>{sections.map(section => { const Icon = section.icon; return <button key={section.id} className={view === section.id ? "nav-active" : ""} onClick={() => setView(section.id)}><Icon />{section.label}{section.id === "alerts" && unread ? <b>{unread}</b> : null}</button>; })}</nav><button className="logout" onClick={signOut}><LogOut />Cerrar sesión</button></aside><section className="content"><header className="topbar"><div><p className="kicker">OPERACIÓN DIARIA · {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p><h1>{sections.find(section => section.id === view)?.label}</h1></div><button className="primary" onClick={() => setModal("appointment")}><Plus />Nuevo turno</button></header>{view === "summary" && <Summary products={products} sales={sales} appointments={appointments} notes={notes} setView={setView} />} {view === "inventory" && <Inventory products={products} edit={(product: Product) => { setEditing(product); setModal("product"); }} add={() => { setEditing(null); setModal("product"); }} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "pos" && <PointOfSale products={products.filter(product => product.active)} clients={clients} shop={shop} reload={loadWorkspace} fail={fail} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "sales" && <SalesHistory sales={sales} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "clients" && <ClientsPanel clients={clients} sales={sales} selected={selectedClient} select={setSelectedClient} add={() => setModal("client")} addPet={(client: Client) => { setSelectedClient(client); setModal("pet"); }} />} {view === "agenda" && <Agenda appointments={appointments} clients={clients} setModal={setModal} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "alerts" && <Alerts notes={notes} settings={settings} shopId={shop.id} reload={loadWorkspace} fail={fail} />} </section>{modal === "product" && <ProductModal product={editing} shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "client" && <ClientModal shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "pet" && <PetModal shopId={shop.id} clients={clients} selected={selectedClient} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "appointment" && <AppointmentModal shopId={shop.id} clients={clients} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "ticket" && selectedTicket && <TicketModal ticket={selectedTicket} shopName={shop.name} close={() => setModal(null)} />} {notice && <div className="toast"><CheckCircle2 />{notice}</div>}</main>;
+  return <main className={view === "pos" ? "app-shell pos-mode" : "app-shell"}><aside className="side"><div className="brand"><PawPrint /><span>pet<span>flow</span></span></div><p className="shop-name">{shop.name}</p><nav>{sections.map(section => { const Icon = section.icon; return <button key={section.id} className={view === section.id ? "nav-active" : ""} onClick={() => setView(section.id)}><Icon />{section.label}{section.id === "alerts" && unread ? <b>{unread}</b> : null}</button>; })}</nav><button className="logout" onClick={signOut}><LogOut />Cerrar sesión</button></aside><section className="content"><header className="topbar"><div><p className="kicker">OPERACIÓN DIARIA · {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p><h1>{sections.find(section => section.id === view)?.label}</h1></div><button className="primary" onClick={() => setModal("appointment")}><Plus />Nuevo turno</button></header>{view === "summary" && <Summary products={products} sales={sales} appointments={appointments} notes={notes} setView={setView} />} {view === "inventory" && <Inventory products={products} edit={(product: Product) => { setEditing(product); setModal("product"); }} add={() => { setEditing(null); setModal("product"); }} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "pos" && <PointOfSale products={products.filter(product => product.active)} clients={clients} shop={shop} reload={loadWorkspace} fail={fail} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "sales" && <SalesHistory sales={sales} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "clients" && <ClientsPanel clients={clients} sales={sales} selected={selectedClient} select={setSelectedClient} add={() => setModal("client")} addPet={(client: Client) => { setSelectedClient(client); setModal("pet"); }} />} {view === "agenda" && <Agenda appointments={appointments} clients={clients} setModal={setModal} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "alerts" && <Alerts notes={notes} settings={settings} shopId={shop.id} reload={loadWorkspace} fail={fail} />} </section>{modal === "product" && <ProductModal product={editing} shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "client" && <ClientModal shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "pet" && <PetModal shopId={shop.id} clients={clients} selected={selectedClient} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "appointment" && <AppointmentModal shopId={shop.id} clients={clients} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "ticket" && selectedTicket && <TicketModal ticket={selectedTicket} shopName={shop.name} close={() => setModal(null)} />} {notice && <div className="toast"><CheckCircle2 />{notice}</div>}</main>;
 }
 
 function AuthCard({ onSubmit, notice }: any) { return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>Todo lo que tu negocio necesita, en un solo flujo.</h1><p>Ingresá con tu correo para gestionar clientes, inventario, ventas, turnos y avisos con datos aislados por negocio.</p><form onSubmit={onSubmit}><label>Correo electrónico<input name="email" type="email" placeholder="nombre@negocio.com" required /></label><button className="primary full">Enviar enlace de acceso</button></form>{notice && <p className="form-note">{notice}</p>}</section></main>; }
@@ -101,7 +102,252 @@ function Empty({ icon, text }: any) { return <div className="empty">{icon}<span>
 
 function Inventory({ products, add, edit, reload, fail, shopId }: any) { const [query, setQuery] = useState(""); const [category, setCategory] = useState("all"); const [state, setState] = useState("all"); const visible = products.filter((product: Product) => `${product.name} ${product.sku || ""}`.toLowerCase().includes(query.toLowerCase()) && (category === "all" || product.category === category) && (state === "all" || (state === "active" && product.active) || (state === "inactive" && !product.active) || (state === "low" && product.active && product.stock <= product.min_stock))); async function adjust(product: Product, adjustment: number) { const { error } = await supabase.rpc("adjust_product_stock", { p_pet_shop_id: shopId, p_product_id: product.id, p_adjustment: adjustment }); if (error) return fail(error); await reload(); } return <div className="stack"><section className="toolbar"><label className="search"><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por producto o SKU" /></label><select value={category} onChange={event => setCategory(event.target.value)} aria-label="Filtrar por categoría"><option value="all">Todas las categorías</option>{categories.map(item => <option key={item} value={item}>{item}</option>)}</select><select value={state} onChange={event => setState(event.target.value)} aria-label="Filtrar por estado"><option value="all">Todos los estados</option><option value="active">Activos</option><option value="low">Para reponer</option><option value="inactive">Inactivos</option></select><button className="primary" onClick={add}><Plus />Agregar producto</button></section><section className="table-panel"><div className="table-title"><div><p className="kicker">CATÁLOGO</p><h2>{visible.length} productos visibles</h2></div><p>Editar datos y ajustar existencias desde una misma tabla.</p></div><div className="table-wrap"><table><thead><tr><th>Producto</th><th>Categoría</th><th>Precio</th><th>Existencias</th><th>Estado</th><th aria-label="Acciones" /></tr></thead><tbody>{visible.map((product: Product) => <tr key={product.id}><td><strong>{product.name}</strong><small>{product.sku || "Sin SKU"}</small></td><td><span className="badge">{product.category}</span></td><td>{formatter.format(Number(product.sale_price))}</td><td><div className="stepper"><button disabled={product.stock === 0} onClick={() => adjust(product, -1)}>−</button><b>{product.stock}</b><button onClick={() => adjust(product, 1)}>+</button></div></td><td><span className={product.active ? (product.stock <= product.min_stock ? "danger-pill" : "success-pill") : "muted-pill"}>{product.active ? product.stock <= product.min_stock ? "Reponer" : "Disponible" : "Inactivo"}</span></td><td><button className="icon-button" onClick={() => edit(product)} aria-label={`Editar ${product.name}`}><Edit3 /></button></td></tr>)}</tbody></table></div></section></div>; }
 
-function PointOfSale({ products, clients, shop, reload, fail, showTicket }: any) { const [cart, setCart] = useState<CartLine[]>([]); const [clientId, setClientId] = useState(""); const [method, setMethod] = useState("cash"); const [query, setQuery] = useState(""); const total = cart.reduce((sum, line) => sum + Number(line.sale_price) * line.quantity, 0); const add = (product: Product) => setCart(current => { const found = current.find(line => line.id === product.id); if (found) return found.quantity >= product.stock ? current : current.map(line => line.id === product.id ? { ...line, quantity: line.quantity + 1 } : line); return product.stock ? [...current, { ...product, quantity: 1 }] : current; }); async function confirm() { if (!cart.length) return; let items; try { items = prepareSaleRequest(cart.map(line => ({ productId: line.id, quantity: line.quantity, availableStock: line.stock }))); } catch (error) { return fail(error); } const { data, error } = await supabase.rpc("create_sale", { p_pet_shop_id: shop.id, p_client_id: clientId || null, p_payment_method: method, p_items: items }); if (error) return fail(error); const [saleResult, itemResult] = await Promise.all([supabase.from("sales").select("*").eq("id", data.sale_id).single(), supabase.from("sale_items").select("*").eq("sale_id", data.sale_id)]); await reload(); setCart([]); if (saleResult.error || itemResult.error) return fail(saleResult.error || itemResult.error); const client = clients.find((current: Client) => current.id === saleResult.data.client_id); showTicket({ ...saleResult.data, client, items: itemResult.data }); } return <div className="pos-layout"><section><div className="toolbar"><label className="search"><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar producto para el pedido" /></label></div><div className="product-grid">{products.filter((product: Product) => product.name.toLowerCase().includes(query.toLowerCase())).map((product: Product) => <button className="product-card" key={product.id} disabled={!product.stock} onClick={() => add(product)}><span>{product.category}</span><strong>{product.name}</strong><small>{product.stock} disponibles</small><b>{formatter.format(Number(product.sale_price))}</b></button>)}</div></section><aside className="ticket"><div className="ticket-head"><ReceiptText /><div><p className="kicker">PEDIDO ACTUAL</p><h2>Ticket de venta</h2></div></div><div className="ticket-lines">{cart.length ? cart.map(line => <div className="ticket-line" key={line.id}><div><strong>{line.name}</strong><small>{formatter.format(Number(line.sale_price))} c/u</small></div><div className="stepper"><button onClick={() => setCart(cart.map(item => item.id === line.id ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item))}>−</button><b>{line.quantity}</b><button disabled={line.quantity >= line.stock} onClick={() => setCart(cart.map(item => item.id === line.id ? { ...item, quantity: item.quantity + 1 } : item))}>+</button></div><strong>{formatter.format(Number(line.sale_price) * line.quantity)}</strong></div>) : <Empty icon={<ShoppingCart />} text="Elegí productos para comenzar a cobrar." />}</div><label>Cliente (opcional)<select value={clientId} onChange={event => setClientId(event.target.value)}><option value="">Venta sin asociar</option>{clients.map((client: Client) => <option key={client.id} value={client.id}>{client.full_name}</option>)}</select></label><p className="label">Medio de pago</p><div className="pay-tabs">{["cash", "card", "transfer", "other"].map(item => <button key={item} className={method === item ? "selected" : ""} onClick={() => setMethod(item)}>{paymentLabel(item)}</button>)}</div><div className="total"><span>Total a cobrar</span><b>{formatter.format(total)}</b></div><button className="primary full" disabled={!cart.length} onClick={confirm}>Confirmar venta<ChevronDown /></button></aside></div>; }
+function PointOfSale({ products, clients, shop, reload, fail, showTicket }: any) {
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [clientId, setClientId] = useState("");
+  const [method, setMethod] = useState("cash");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("all");
+  const [lookupMode, setLookupMode] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const activeProducts = products.filter((product: Product) => product.active);
+  const visibleCategories: string[] = Array.from(new Set<string>(activeProducts.map((product: Product) => product.category)))
+    .sort((a, b) => a.localeCompare(b, "es"));
+  const matchingProducts = activeProducts.filter((product: Product) => {
+    const searchable = `${product.name} ${product.sku || ""} ${product.category}`.toLowerCase();
+    return searchable.includes(query.trim().toLowerCase()) && (category === "all" || product.category === category);
+  });
+  const total = cart.reduce((sum, line) => sum + Number(line.sale_price) * line.quantity, 0);
+  const unitCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+
+  const add = (product: Product) => {
+    if (Number(product.stock) <= 0) return fail(new Error("Este producto no tiene existencias disponibles."));
+    setCart(current => {
+      const found = current.find(line => line.id === product.id);
+      if (found) {
+        if (found.quantity >= Number(product.stock)) return current;
+        return current.map(line => line.id === product.id ? { ...line, quantity: line.quantity + 1 } : line);
+      }
+      return [...current, { ...product, quantity: 1 }];
+    });
+  };
+
+  function clearCart() {
+    setCart([]);
+    setClientId("");
+    setMethod("cash");
+  }
+
+  function addExactMatch() {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized || lookupMode) return;
+
+    const skuMatches = activeProducts.filter((product: Product) => product.sku?.trim().toLowerCase() === normalized);
+    const nameMatches = activeProducts.filter((product: Product) => product.name.trim().toLowerCase() === normalized);
+    const exactMatches = skuMatches.length ? skuMatches : nameMatches;
+    if (exactMatches.length !== 1) return;
+
+    add(exactMatches[0]);
+    setQuery("");
+    searchRef.current?.focus();
+  }
+
+  useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if (event.key === "F2") {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (event.key === "F4" && !event.repeat && !submitting) {
+        event.preventDefault();
+        clearCart();
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [submitting]);
+
+  function toggleLookupMode() {
+    setLookupMode(current => !current);
+    setQuery("");
+    window.setTimeout(() => searchRef.current?.focus(), 0);
+  }
+
+  async function confirm() {
+    if (!cart.length || submitting) return;
+    let items;
+    try {
+      items = prepareSaleRequest(cart.map(line => ({
+        productId: line.id,
+        quantity: line.quantity,
+        availableStock: Number(line.stock),
+      })));
+    } catch (error) {
+      return fail(error);
+    }
+
+    setSubmitting(true);
+    try {
+      const { data, error } = await supabase.rpc("create_sale", {
+        p_pet_shop_id: shop.id,
+        p_client_id: clientId || null,
+        p_payment_method: method,
+        p_items: items,
+      });
+      if (error) return fail(error);
+
+      const [saleResult, itemResult] = await Promise.all([
+        supabase.from("sales").select("*").eq("id", data.sale_id).single(),
+        supabase.from("sale_items").select("*").eq("sale_id", data.sale_id),
+      ]);
+      await reload();
+      clearCart();
+      setQuery("");
+      if (saleResult.error || itemResult.error) return fail(saleResult.error || itemResult.error);
+      const client = clients.find((current: Client) => current.id === saleResult.data.client_id);
+      showTicket({ ...saleResult.data, client, items: itemResult.data });
+    } catch (error) {
+      fail(error);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="pos-workstation">
+      <section className="pos-catalog" aria-label="Catálogo de productos">
+        <div className="pos-catalog-head">
+          <div className="pos-heading-row">
+            <div>
+              <h2>{lookupMode ? "Consultar precio" : "Venta rápida"}</h2>
+              <p>{lookupMode ? "Buscá un artículo para consultar su precio y disponibilidad." : "Escaneá el código o buscá un producto para agregarlo al ticket."}</p>
+            </div>
+            <span className="pos-ready-state"><span className="pos-ready-dot" />Lista para cobrar</span>
+          </div>
+          <div className="pos-catalog-toolbar">
+            <label className="pos-search">
+              <Search aria-hidden="true" />
+              <input
+                ref={searchRef}
+                aria-label="Buscar o escanear producto"
+                aria-keyshortcuts="F2 Enter"
+                autoComplete="off"
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    addExactMatch();
+                  }
+                }}
+                placeholder="Escaneá un código, SKU o escribí un producto"
+                value={query}
+              />
+              {query && <button className="pos-clear-search" type="button" onClick={() => setQuery("")} aria-label="Limpiar búsqueda"><X /></button>}
+              <kbd>Enter</kbd>
+            </label>
+            <button className={`pos-tool-button${lookupMode ? " is-active" : ""}`} aria-pressed={lookupMode} onClick={toggleLookupMode} type="button">
+              <Search aria-hidden="true" />{lookupMode ? "Volver a vender" : "Consultar precio"}
+            </button>
+          </div>
+          <p className="pos-search-guidance">Los lectores USB que escriben como teclado se pueden usar directamente en este campo.</p>
+          <div className="pos-categories" aria-label="Filtrar por categoría">
+            <button className={`pos-category-chip${category === "all" ? " is-selected" : ""}`} aria-pressed={category === "all"} onClick={() => setCategory("all")} type="button">Todas</button>
+            {visibleCategories.map((item: string) => (
+              <button className={`pos-category-chip${category === item ? " is-selected" : ""}`} aria-pressed={category === item} key={item} onClick={() => setCategory(item)} type="button">{item}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pos-products-area">
+          <div className="pos-section-heading">
+            <strong>{query ? `${matchingProducts.length} resultado${matchingProducts.length === 1 ? "" : "s"}` : `${matchingProducts.length} productos activos`}</strong>
+            <span>{lookupMode ? "Modo consulta: los artículos no se agregan al ticket" : "Elegí un producto o escaneá su código"}</span>
+          </div>
+          {matchingProducts.length ? (
+            <div className="pos-products-grid">
+              {matchingProducts.map((product: Product) => {
+                const cardContent = <>
+                  <span className="pos-product-category">{product.category}</span>
+                  <strong className="pos-product-name">{product.name}</strong>
+                  <small className="pos-product-meta">{product.sku || "Sin SKU"} · {Number(product.stock) > 0 ? `${product.stock} disponibles` : "Sin stock"}</small>
+                  <b className="pos-product-price">{formatter.format(Number(product.sale_price))}</b>
+                </>;
+                return lookupMode ? (
+                  <article className="pos-product-card" key={product.id}>{cardContent}</article>
+                ) : (
+                  <button
+                    aria-label={`Agregar ${product.name}, ${formatter.format(Number(product.sale_price))}`}
+                    className="pos-product-card"
+                    disabled={Number(product.stock) <= 0}
+                    key={product.id}
+                    onClick={() => { add(product); setQuery(""); }}
+                    type="button"
+                  >{cardContent}</button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="pos-empty-cart">
+              <Search aria-hidden="true" />
+              <strong>{query ? "No encontramos ese producto" : "Todavía no hay productos activos"}</strong>
+              <span>{query ? "Revisá el nombre o el código e intentá de nuevo." : "Agregá productos al catálogo para empezar a cobrar."}</span>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <aside className="pos-checkout" aria-label="Detalle de la venta">
+        <header className="pos-checkout-heading">
+          <div className="pos-checkout-heading-main">
+            <span className="pos-cart-icon"><ShoppingCart aria-hidden="true" /></span>
+            <div><h2>Carrito</h2><p>Revisá el pedido antes de cobrar</p></div>
+          </div>
+          <button className="pos-clear-cart" disabled={!cart.length || submitting} onClick={clearCart} type="button"><X aria-hidden="true" />Vaciar</button>
+        </header>
+        <div className="pos-cart-summary"><strong>{cart.length} producto{cart.length === 1 ? "" : "s"}</strong><span>{unitCount} unidad{unitCount === 1 ? "" : "es"}</span></div>
+        <div className="pos-cart-lines">
+          {cart.length ? cart.map(line => (
+            <div className="pos-cart-line" key={line.id}>
+              <div className="pos-cart-product"><strong>{line.name}</strong><small>{formatter.format(Number(line.sale_price))} c/u</small></div>
+              <strong className="pos-cart-line-total">{formatter.format(Number(line.sale_price) * line.quantity)}</strong>
+              <div className="pos-quantity-controls" aria-label={`Cantidad de ${line.name}`}>
+                <button aria-label={`Restar una unidad de ${line.name}`} disabled={submitting} onClick={() => setCart(current => current.map(item => item.id === line.id ? { ...item, quantity: Math.max(1, item.quantity - 1) } : item))} type="button">−</button>
+                <span>{line.quantity}</span>
+                <button aria-label={`Agregar una unidad de ${line.name}`} disabled={submitting || line.quantity >= Number(line.stock)} onClick={() => setCart(current => current.map(item => item.id === line.id ? { ...item, quantity: Math.min(Number(item.stock), item.quantity + 1) } : item))} type="button">+</button>
+                <small>{line.stock} en stock</small>
+              </div>
+            </div>
+          )) : (
+            <div className="pos-empty-cart"><ShoppingCart aria-hidden="true" /><strong>Carrito vacío</strong><span>Buscá o escaneá productos para agregarlos.</span></div>
+          )}
+        </div>
+        <div className="pos-checkout-fields">
+          <label className="pos-field">Cliente (opcional)
+            <select value={clientId} onChange={event => setClientId(event.target.value)}>
+              <option value="">Consumidor final</option>
+              {clients.map((client: Client) => <option key={client.id} value={client.id}>{client.full_name}</option>)}
+            </select>
+          </label>
+          <p className="pos-payment-label">Medio de pago</p>
+          <div className="pos-payment-options">
+            {["cash", "card", "transfer", "other"].map(item => (
+              <button aria-pressed={method === item} className={`pos-pay-option${method === item ? " is-selected" : ""}`} key={item} onClick={() => setMethod(item)} type="button">{paymentLabel(item)}</button>
+            ))}
+          </div>
+        </div>
+        <div className="pos-checkout-total"><span>Total a cobrar</span><strong>{formatter.format(total)}</strong></div>
+        <button className="primary pos-charge-button" disabled={!cart.length || submitting} onClick={confirm} type="button">
+          {submitting ? "Procesando venta…" : `Cobrar ${formatter.format(total)}`}
+        </button>
+        <footer className="pos-key-hint" aria-label="Atajos de teclado">
+          <span><kbd>F2</kbd> Buscar</span><span><kbd>Enter</kbd> Agregar SKU exacto</span><span><kbd>F4</kbd> Vaciar borrador</span>
+        </footer>
+      </aside>
+    </div>
+  );
+}
 function SalesHistory({ sales, showTicket }: any) { const [open, setOpen] = useState<string | null>(null); return <section className="table-panel"><div className="table-title"><div><p className="kicker">CONTROL COMERCIAL</p><h2>Historial completo de ventas</h2></div><p>Consultá el detalle y descargá o imprimí cada comprobante.</p></div><div className="table-wrap"><table><thead><tr><th>Fecha</th><th>Cliente</th><th>Pago</th><th>Total</th><th>Detalle</th><th /></tr></thead><tbody>{sales.map((sale: Sale) => <><tr key={sale.id}><td>{new Date(sale.created_at).toLocaleString("es-AR")}</td><td>{sale.client?.full_name || "Venta sin asociar"}</td><td><span className="badge">{paymentLabel(sale.payment_method)}</span></td><td><strong>{formatter.format(Number(sale.total))}</strong></td><td><button className="text-button" onClick={() => setOpen(open === sale.id ? null : sale.id)}>{open === sale.id ? "Ocultar" : `${sale.items.length} ítems`}</button></td><td><button className="icon-button" onClick={() => showTicket(sale)} aria-label="Abrir ticket"><ReceiptText /></button></td></tr>{open === sale.id && <tr className="details" key={`${sale.id}-detail`}><td colSpan={6}>{sale.items.map(item => <div key={`${sale.id}-${item.product_name}`} className="item-detail"><span>{item.quantity} × {item.product_name}</span><span>{formatter.format(Number(item.line_total))}</span></div>)}</td></tr>}</>)}</tbody></table></div>{!sales.length && <Empty icon={<ReceiptText />} text="Todavía no hay ventas registradas." />}</section>; }
 function ClientsPanel({ clients, sales, selected, select, add, addPet }: any) { const [query, setQuery] = useState(""); const visible = clients.filter((client: Client) => `${client.full_name} ${client.phone || ""} ${client.pets.map(pet => pet.name).join(" ")}`.toLowerCase().includes(query.toLowerCase())); const clientSales = sales.filter((sale: Sale) => sale.client_id === selected?.id); return <div className="stack"><section className="toolbar"><label className="search"><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por tutor o mascota" /></label><button className="primary" onClick={add}><Plus />Nuevo cliente</button></section><div className="clients-workspace"><div className="client-grid">{visible.map((client: Client) => <article className="client-card" key={client.id}><button className="client-main" onClick={() => select(client)}><div className="avatar">{client.full_name[0]}</div><div><h3>{client.full_name}</h3><p>{client.phone || client.email || "Sin datos de contacto"}</p></div></button><div className="pet-tags">{client.pets.length ? client.pets.map(pet => <span key={pet.id}><PawPrint />{pet.name} · {pet.species}</span>) : <span className="muted-pill">Sin mascotas</span>}</div><button className="text-button" onClick={() => addPet(client)}><Plus />Añadir mascota</button></article>)}</div><aside className="panel client-detail">{selected ? <><div className="panel-head"><div><p className="kicker">FICHA DEL CLIENTE</p><h2>{selected.full_name}</h2></div><button className="icon-button" onClick={() => select(null)} aria-label="Cerrar ficha"><X /></button></div><div className="contact-detail"><p><span>Teléfono</span>{selected.phone || "No registrado"}</p><p><span>Correo</span>{selected.email || "No registrado"}</p></div><div className="detail-section"><div className="panel-head"><h3>Mascotas</h3><button onClick={() => addPet(selected)}><Plus />Añadir</button></div>{selected.pets.length ? selected.pets.map((pet: Pet) => <div className="detail-row" key={pet.id}><PawPrint /><div><strong>{pet.name}</strong><small>{pet.species}{pet.breed ? ` · ${pet.breed}` : ""}</small></div></div>) : <p className="empty-copy">Aún no hay mascotas asociadas.</p>}</div><div className="detail-section"><div className="panel-head"><h3>Compras recientes</h3><span className="badge">{clientSales.length}</span></div>{clientSales.length ? clientSales.slice(0, 6).map((sale: Sale) => <div className="detail-row" key={sale.id}><ReceiptText /><div><strong>{new Date(sale.created_at).toLocaleDateString("es-AR")}</strong><small>{paymentLabel(sale.payment_method)}</small></div><b>{formatter.format(Number(sale.total))}</b></div>) : <p className="empty-copy">No hay compras registradas.</p>}</div></> : <Empty icon={<Users />} text="Seleccioná un cliente para consultar su ficha e historial." />}</aside></div></div>; }
 function Agenda({ appointments, clients, setModal, reload, fail, shopId }: any) { const [day, setDay] = useState(new Date().toISOString().slice(0, 10)); const clientMap = new Map<string, Client>(clients.map((client: Client) => [client.id, client] as [string, Client])); const list = appointments.filter((appointment: Appointment) => appointment.scheduled_at.slice(0, 10) === day); async function setStatus(appointment: Appointment, status: string) { const { error } = await supabase.rpc("update_appointment_status", { p_pet_shop_id: shopId, p_appointment_id: appointment.id, p_status: status }); if (error) return fail(error); await reload(); } return <div className="agenda"><section className="panel"><div className="panel-head"><div><p className="kicker">VISTA DIARIA</p><h2>{new Date(`${day}T12:00`).toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</h2></div><input type="date" value={day} onChange={event => setDay(event.target.value)} /></div>{list.length ? list.map((appointment: Appointment) => { const client = clientMap.get(appointment.client_id); const pet = client?.pets.find((current: Pet) => current.id === appointment.pet_id); return <article className="appointment" key={appointment.id}><time>{new Date(appointment.scheduled_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</time><div><h3>{pet?.name || "Mascota"}</h3><p>{client?.full_name || "Cliente"} · {appointment.service}</p></div><span className="badge">{statusLabel(appointment.status)}</span><select value={appointment.status} onChange={event => setStatus(appointment, event.target.value)}>{["scheduled", "confirmed", "in_progress", "completed", "cancelled", "no_show"].map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></article>; }) : <Empty icon={<CalendarDays />} text="No hay servicios agendados para este día." />}</section><aside className="agenda-callout"><CalendarDays /><p className="kicker">SERVICIOS</p><h2>Una agenda ordenada mejora cada atención.</h2><p>Creá turnos, sumá nuevos clientes sin salir del flujo y actualizá el estado mientras atendés.</p><button className="primary full" onClick={() => setModal("appointment")}><Plus />Agendar servicio</button></aside></div>; }
