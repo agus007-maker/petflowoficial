@@ -1,21 +1,19 @@
 {
   "include": [
-    "next-env.d.ts",
-    "app/**/*.ts",
-    "app/**/*.tsx",
+    "client/**/*.ts",
+    "client/**/*.tsx",
     "components/**/*.ts",
     "components/**/*.tsx",
+    "drizzle/**/*.ts",
     "lib/**/*.ts",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "server/**/*.ts",
+    "shared/**/*.ts",
+    "vite.config.ts"
   ],
   "exclude": [
     "node_modules",
     "build",
     "dist",
-    "client",
-    "server",
-    "shared",
     "**/*.test.ts"
   ],
   "compilerOptions": {
@@ -34,15 +32,17 @@
     "skipLibCheck": true,
     "allowJs": true,
     "moduleResolution": "bundler",
-    "baseUrl": ".",
-    "plugins": [
-      {
-        "name": "next"
-      }
+    "types": [
+      "vite/client",
+      "node"
     ],
+    "baseUrl": ".",
     "paths": {
       "@/*": [
-        "./*"
+        "./client/src/*"
+      ],
+      "@shared/*": [
+        "./shared/*"
       ]
     },
     "target": "ES2017",
