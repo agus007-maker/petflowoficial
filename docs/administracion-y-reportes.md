@@ -12,6 +12,12 @@ El panel **Roles y permisos** sólo aparece para el propietario del negocio. La 
 
 El panel **Reporte diario** genera un CSV UTF-8 separado por punto y coma, compatible con Excel. Incluye resumen de ventas, ingresos, turnos, clientes, detalle de ventas y turnos del día seleccionado.
 
-## Programación automática
+## Diagnóstico automático y notificaciones
 
-La generación manual está lista. Para enviarlo todos los días por correo hay que desplegar primero la versión con un endpoint de producción en `/api/scheduled/`, registrar un Heartbeat diario y conectar un proveedor de correo. No se debe usar un `setInterval` dentro del servidor, porque el runtime puede apagarse entre ejecuciones. La migración y el endpoint de automatización deben aplicarse sólo después de confirmar la URL publicada y el proveedor de correo.
+PetFlow incluye el endpoint protegido `POST /api/scheduled/system-diagnostics`. Sólo acepta la identidad de un cron de Manus (`isCron` + `taskUid`) y ejecuta comprobaciones de lectura sobre Node.js, `dist/public/index.html` y el health endpoint de autenticación de Supabase. No crea ventas, no modifica productos y no escribe filas de prueba.
+
+Al terminar, usa el canal de notificaciones del propietario del proyecto para informar el resultado. Si una comprobación falla, el handler devuelve HTTP 502 y el sistema de Heartbeat puede reintentar; si el canal de notificaciones no está disponible, también devuelve HTTP 502. Los errores inesperados incluyen contexto y timestamp para investigación.
+
+Para dejarlo funcionando todos los días, primero hay que publicar esta versión y confirmar la URL pública. Luego se registra un Heartbeat de proyecto con una expresión UTC de seis campos, por ejemplo `0 0 9 * * *`, apuntando al endpoint anterior. El cron debe crearse desde Manus, no con `setInterval` dentro del servidor, porque el runtime puede apagarse entre ejecuciones.
+
+El canal incluido es una notificación al propietario, no un correo SMTP personal. Para correo electrónico se necesita conectar un proveedor y agregarlo como canal de entrega; no se guardan credenciales de correo en el repositorio.

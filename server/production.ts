@@ -1,6 +1,7 @@
 import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createSystemDiagnosticsHandler } from "./scheduled/systemDiagnostics";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -8,6 +9,8 @@ const currentFile = fileURLToPath(import.meta.url);
 const publicDir = path.join(path.dirname(currentFile), "public");
 
 app.disable("x-powered-by");
+app.use(express.json({ limit: "32kb" }));
+app.post("/api/scheduled/system-diagnostics", createSystemDiagnosticsHandler(publicDir));
 app.use(express.static(publicDir, { index: "index.html" }));
 
 // SPA fallback: Supabase redirects and client-side routes must load index.html.

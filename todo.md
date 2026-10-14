@@ -4,5 +4,6 @@
 - [x] Panel de roles para miembros existentes, protegido visualmente para el propietario.
 - [x] Migración y RPC de permisos para que el control también se aplique en Supabase.
 - [x] Generación de reporte diario compatible con Excel mediante CSV UTF-8.
-- [ ] Activar programación automática externa (cron/Heartbeat) y entrega por correo, pendiente de URL desplegada y proveedor de correo.
+- [x] Implementar endpoint de diagnóstico automático protegido por cron, con notificación al propietario y pruebas no destructivas.
+- [ ] Activar Heartbeat diario sobre la URL publicada y, si se requiere correo personal, conectar un proveedor SMTP/transaccional.
 - [x] Validar TypeScript, pruebas y build parcial.
