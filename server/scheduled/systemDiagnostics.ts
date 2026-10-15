@@ -107,6 +107,39 @@ export async function runSystemDiagnostics({
 
 type CronUser = { isCron?: boolean; taskUid?: string };
 
+async function persistDiagnosticRun(input: {
+  taskUid: string;
+  result: DiagnosticsResult;
+  notified: boolean;
+  errorMessage?: string;
+}): Promise<void> {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+  if (!serviceRoleKey) {
+    throw new Error("Falta SUPABASE_SERVICE_ROLE_KEY para guardar el historial del diagnóstico");
+  }
+  const response = await fetch(`${(process.env.NEXT_PUBLIC_SUPABASE_URL ?? DEFAULT_SUPABASE_URL).replace(/\/$/, "")}/rest/v1/system_diagnostic_runs`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      "content-type": "application/json",
+      prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      task_uid: input.taskUid,
+      checked_at: input.result.checkedAt,
+      status: input.result.ok ? "ok" : "failed",
+      checks: input.result.checks,
+      notification_sent: input.notified,
+      error_message: input.errorMessage ?? null,
+    }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) {
+    throw new Error(`No se pudo guardar el diagnóstico (Supabase HTTP ${response.status})`);
+  }
+}
+
 function cronOnly(user: CronUser | null | undefined): user is CronUser & {
   isCron: true;
   taskUid: string;
@@ -139,6 +172,7 @@ export function createSystemDiagnosticsHandler(publicDir: string): RequestHandle
         ),
       ].join("\n");
       const notified = await notifyOwner({ title, content });
+      await persistDiagnosticRun({ taskUid, result, notified });
       const payload = { ...result, taskUid, notified };
 
       if (!notified) {

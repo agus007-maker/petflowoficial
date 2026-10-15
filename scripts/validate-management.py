@@ -2,6 +2,8 @@ from pathlib import Path
 
 migration = Path(__file__).parents[1] / "supabase" / "migrations" / "0003_management_tools.sql"
 text = migration.read_text(encoding="utf-8")
+diagnostics_migration = Path(__file__).parents[1] / "supabase" / "migrations" / "0004_system_diagnostics.sql"
+diagnostics_text = diagnostics_migration.read_text(encoding="utf-8")
 required = [
     "pet_shop_memberships",
     "permissions jsonb",
@@ -16,4 +18,14 @@ required = [
 missing = [fragment for fragment in required if fragment not in text]
 if missing:
     raise SystemExit("Faltan fragmentos de administración: " + ", ".join(missing))
-print(f"Migración de administración válida: {len(required)} controles encontrados.")
+diagnostics_required = [
+    "system_diagnostic_runs",
+    "task_uid",
+    "notification_sent",
+    "enable row level security",
+    "nitsugamon@gmail.com",
+]
+diagnostics_missing = [fragment for fragment in diagnostics_required if fragment not in diagnostics_text]
+if diagnostics_missing:
+    raise SystemExit("Faltan fragmentos del historial de diagnósticos: " + ", ".join(diagnostics_missing))
+print(f"Migraciones de administración válidas: {len(required) + len(diagnostics_required)} controles encontrados.")
