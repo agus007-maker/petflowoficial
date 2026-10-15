@@ -5,5 +5,5 @@
 - [x] Migración y RPC de permisos para que el control también se aplique en Supabase.
 - [x] Generación de reporte diario compatible con Excel mediante CSV UTF-8.
 - [x] Implementar endpoint de diagnóstico automático protegido por cron, con notificación al propietario y pruebas no destructivas.
-- [ ] Activar Heartbeat diario sobre la URL publicada y, si se requiere correo personal, conectar un proveedor SMTP/transaccional.
+- [x] Activar Heartbeat diario sobre la URL publicada; las alertas se entregan por el canal del propietario. El correo SMTP/transaccional personal queda como integración opcional pendiente de proveedor.
 - [x] Validar TypeScript, pruebas y build parcial.
