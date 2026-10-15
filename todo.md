@@ -6,4 +6,6 @@
 - [x] Generación de reporte diario compatible con Excel mediante CSV UTF-8.
 - [x] Implementar endpoint de diagnóstico automático protegido por cron, con notificación al propietario y pruebas no destructivas.
 - [x] Activar Heartbeat diario sobre la URL publicada; las alertas se entregan por el canal del propietario. El correo SMTP/transaccional personal queda como integración opcional pendiente de proveedor.
+- [x] Implementar Mi caja: apertura, ingresos, retiros, efectivo esperado y cierre con diferencia.
+- [ ] Aplicar la migración `0005_cash_registers.sql` en Supabase antes de operar con datos reales.
 - [x] Validar TypeScript, pruebas y build parcial.
