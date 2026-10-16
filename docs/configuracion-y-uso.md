@@ -53,6 +53,8 @@ Usá el identificador UUID del usuario ya creado en `auth.users` y ejecutá `IMP
 
 Ejecutá `pnpm validate:supabase`, `pnpm test`, `pnpm check` y `pnpm build`. La suite incluye conectividad de credenciales, sintaxis y elementos de seguridad del esquema, preparación de venta, validación de productos, vínculo cliente-mascota, alta rápida y convenciones de ticket. La migración incorpora `supabase/tests/petflow_rls.test.sql`: ejecutalo con `supabase test db` en un entorno local de Supabase para comprobar que el propietario puede operar su pet shop, que otros usuarios no acceden a sus filas y que las ventas sólo se crean mediante la función RPC.[1]
 
+Para comprobar que la base publicada tiene Mi caja aplicada, configurá temporalmente `SUPABASE_SERVICE_ROLE_KEY` sólo en una terminal segura y ejecutá `pnpm validate:cash`. El script consulta la existencia de `cash_registers`, `cash_movements` y las tres RPC sin abrir ni cerrar una caja. Nunca pegues esa clave en el navegador, en GitHub ni en mensajes.
+
 ## Referencias
 
 [1]: https://supabase.com/docs/guides/database/postgres/row-level-security "Supabase Docs: Row Level Security"

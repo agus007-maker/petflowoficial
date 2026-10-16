@@ -7,5 +7,6 @@
 - [x] Implementar endpoint de diagnóstico automático protegido por cron, con notificación al propietario y pruebas no destructivas.
 - [x] Activar Heartbeat diario sobre la URL publicada; las alertas se entregan por el canal del propietario. El correo SMTP/transaccional personal queda como integración opcional pendiente de proveedor.
 - [x] Implementar Mi caja: apertura, ingresos, retiros, efectivo esperado y cierre con diferencia.
-- [ ] Aplicar la migración `0005_cash_registers.sql` en Supabase antes de operar con datos reales.
+- [ ] Verificar técnicamente en Supabase que la migración `0005_cash_registers.sql` está aplicada; el usuario la confirmó, pero esta sesión no tiene una clave server-side para comprobarlo.
+- [x] Agregar `pnpm validate:cash`, verificador no destructivo de tablas y RPC de caja.
 - [x] Validar TypeScript, pruebas y build parcial.

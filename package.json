@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit generate && drizzle-kit migrate",
     "validate:supabase": "python3 scripts/validate-supabase-schema.py",
     "validate:management": "python3 scripts/validate-management.py",
+    "validate:cash": "node scripts/validate-cash-schema.mjs",
     "import:legacy": "node scripts/import-legacy-data.mjs"
   },
   "dependencies": {
