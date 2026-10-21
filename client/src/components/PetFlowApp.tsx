@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./PetFlowPos.css";
+import "./Auth.css";
 import { Banknote, Bell, CalendarDays, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Download, Edit3, FileSpreadsheet, LoaderCircle, LogOut, PackageSearch, PawPrint, Percent, Plus, Printer, ReceiptText, Search, Settings2, ShoppingCart, ShieldCheck, Users, UserCog, X } from "lucide-react";
 import { createClient, getPublicAppUrl } from "@/lib/supabase/client";
 import { downloadTicketPdf, paymentLabel, printTicket } from "@/lib/tickets";
@@ -33,7 +34,7 @@ const emptyProduct = { name: "", sku: "", category: categories[0], stock: "0", m
 export default function PetFlowApp() {
   const [user, setUser] = useState<any>(null); const [shop, setShop] = useState<Shop | null>(null); const [view, setView] = useState<View>("summary");
   const [products, setProducts] = useState<Product[]>([]); const [clients, setClients] = useState<Client[]>([]); const [appointments, setAppointments] = useState<Appointment[]>([]); const [sales, setSales] = useState<Sale[]>([]); const [notes, setNotes] = useState<Note[]>([]); const [settings, setSettings] = useState<any>({ reminders_enabled: true, reminder_lead_minutes: 60 });
-  const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
+  const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [passwordSetupRequired, setPasswordSetupRequired] = useState(false); const [savingPassword, setSavingPassword] = useState(false); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
 
   const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); };
   const fail = (error: any) => notify(error?.message || "No fue posible completar la operación.");
@@ -45,23 +46,37 @@ export default function PetFlowApp() {
   }, []);
   async function boot() {
     setLoading(true);
-    const code = new URLSearchParams(window.location.search).get("code");
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    const flow = params.get("flow");
+    const requiresPasswordSetup = Boolean(code) || flow === "create-password" || flow === "password-recovery";
     if (code) {
       const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) fail(error);
+      if (error) {
+        await supabase.auth.signOut();
+        window.history.replaceState({}, document.title, window.location.pathname);
+        notify("El enlace venció o ya fue utilizado. Solicitá uno nuevo desde PetFlow.");
+        setLoading(false);
+        return;
+      }
       window.history.replaceState({}, document.title, window.location.pathname);
     }
     const { data: { session } } = await supabase.auth.getSession();
     const signedInUser = session?.user ?? null;
     setUser(signedInUser);
-    if (signedInUser) {
-      const { data, error } = await supabase.from("pet_shop_memberships").select("pet_shop:pet_shops(id,name,timezone,owner_user_id)").eq("user_id", signedInUser.id).limit(1);
-      if (error) fail(error);
-      const currentShop = (data?.[0] as any)?.pet_shop as Shop | undefined;
-      setShop(currentShop ?? null);
-      if (currentShop) await loadWorkspace(currentShop.id);
+    if (signedInUser && requiresPasswordSetup) {
+      setPasswordSetupRequired(true);
+    } else if (signedInUser) {
+      await loadSignedInWorkspace(signedInUser);
     }
     setLoading(false);
+  }
+  async function loadSignedInWorkspace(signedInUser: any) {
+    const { data, error } = await supabase.from("pet_shop_memberships").select("pet_shop:pet_shops(id,name,timezone,owner_user_id)").eq("user_id", signedInUser.id).limit(1);
+    if (error) return fail(error);
+    const currentShop = (data?.[0] as any)?.pet_shop as Shop | undefined;
+    setShop(currentShop ?? null);
+    if (currentShop) await loadWorkspace(currentShop.id);
   }
   async function loadWorkspace(shopId = shop?.id) {
     if (!shopId) return;
@@ -85,17 +100,97 @@ export default function PetFlowApp() {
     setNotes((noteRes.data ?? []) as Note[]); setSettings(settingRes.data ?? { reminders_enabled: true, reminder_lead_minutes: 60 });
   }
   async function createShop(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const name = new FormData(event.currentTarget).get("name")?.toString().trim(); if (!name || !user) return; const { data, error } = await supabase.from("pet_shops").insert({ name, owner_user_id: user.id }).select().single(); if (error) return fail(error); setShop(data); await loadWorkspace(data.id); notify("Pet shop creado. Ya podés comenzar a operar."); }
-  async function signIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const email = new FormData(event.currentTarget).get("email")?.toString().trim(); if (!email) return; const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${getPublicAppUrl()}/` } }); if (error) return fail(error); notify("Revisá tu correo para continuar con el enlace de acceso."); }
-  async function signOut() { await supabase.auth.signOut(); setUser(null); setShop(null); setProducts([]); }
+  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const email = form.get("email")?.toString().trim();
+    const password = form.get("password")?.toString();
+    if (!email || !password) return;
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return fail(error);
+    await boot();
+  }
+  async function requestAccountLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
+    if (!email) return;
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${getPublicAppUrl()}/?flow=create-password`, shouldCreateUser: true } });
+    if (error) return fail(error);
+    notify("Si el correo puede registrarse, te enviamos un enlace. Al abrirlo vas a poder elegir tu contraseña.");
+  }
+  async function requestPasswordRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
+    if (!email) return;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${getPublicAppUrl()}/?flow=password-recovery` });
+    if (error) return fail(error);
+    notify("Si existe una cuenta con ese correo, te enviamos un enlace para restablecer la contraseña.");
+  }
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const password = form.get("password")?.toString() ?? "";
+    const confirmation = form.get("confirmPassword")?.toString() ?? "";
+    if (password.length < 10) return notify("La contraseña debe tener al menos 10 caracteres.");
+    if (password !== confirmation) return notify("Las contraseñas no coinciden.");
+    setSavingPassword(true);
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        fail(error);
+        return;
+      }
+      if (!data.user) {
+        notify("No pudimos confirmar la cuenta. Volvé a abrir el enlace de tu correo.");
+        return;
+      }
+      setUser(data.user);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      await loadSignedInWorkspace(data.user);
+      setPasswordSetupRequired(false);
+      notify("Contraseña guardada. La próxima vez podés ingresar con tu email y contraseña.");
+    } finally {
+      setSavingPassword(false);
+      setLoading(false);
+    }
+  }
+  async function signOut() { await supabase.auth.signOut(); setUser(null); setShop(null); setProducts([]); setPasswordSetupRequired(false); }
 
   if (loading) return <div className="splash"><LoaderCircle className="spin" />Preparando PetFlow…</div>;
-  if (!user) return <AuthCard onSubmit={signIn} notice={notice} />;
+  if (!user) return <AuthCard onPasswordLogin={signInWithPassword} onRequestAccount={requestAccountLink} onRequestRecovery={requestPasswordRecovery} notice={notice} />;
+  if (passwordSetupRequired) return <PasswordSetupCard email={user.email} onSubmit={savePassword} onCancel={signOut} saving={savingPassword} notice={notice} />;
   if (!shop) return <ShopSetup onSubmit={createShop} notice={notice} />;
   const unread = notes.filter(note => !note.read_at).length; const isOwner = shop.owner_user_id === user.id;
   return <main className={view === "pos" ? "app-shell pos-mode" : "app-shell"}><aside className="side"><div className="brand"><PawPrint /><span>pet<span>flow</span></span></div><p className="shop-name">{shop.name}</p><nav>{sections.filter(section => section.id !== "management" || isOwner).map(section => { const Icon = section.icon; return <button key={section.id} className={view === section.id ? "nav-active" : ""} onClick={() => setView(section.id)}><Icon />{section.label}{section.id === "alerts" && unread ? <b>{unread}</b> : null}</button>; })}</nav><button className="logout" onClick={signOut}><LogOut />Cerrar sesión</button></aside><section className="content"><header className="topbar"><div><p className="kicker">OPERACIÓN DIARIA · {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p><h1>{sections.find(section => section.id === view)?.label}</h1></div><button className="primary" onClick={() => setModal("appointment")}><Plus />Nuevo turno</button></header>{view === "summary" && <Summary products={products} sales={sales} appointments={appointments} notes={notes} setView={setView} />} {view === "cash" && <CashRegisterPanel shopId={shop.id} sales={sales} fail={fail} />} {view === "inventory" && <Inventory products={products} edit={(product: Product) => { setEditing(product); setModal("product"); }} add={() => { setEditing(null); setModal("product"); }} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "pos" && <PointOfSale products={products.filter(product => product.active)} clients={clients} shop={shop} reload={loadWorkspace} fail={fail} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "sales" && <SalesHistory sales={sales} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "clients" && <ClientsPanel clients={clients} sales={sales} selected={selectedClient} select={setSelectedClient} add={() => setModal("client")} addPet={(client: Client) => { setSelectedClient(client); setModal("pet"); }} />} {view === "agenda" && <Agenda appointments={appointments} clients={clients} setModal={setModal} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "alerts" && <Alerts notes={notes} settings={settings} shopId={shop.id} reload={loadWorkspace} fail={fail} />} {view === "management" && isOwner && <ManagementPanel shopId={shop.id} userId={user.id} products={products} sales={sales} appointments={appointments} clients={clients} reload={loadWorkspace} fail={fail} />} </section>{modal === "product" && <ProductModal product={editing} shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "client" && <ClientModal shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "pet" && <PetModal shopId={shop.id} clients={clients} selected={selectedClient} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "appointment" && <AppointmentModal shopId={shop.id} clients={clients} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "ticket" && selectedTicket && <TicketModal ticket={selectedTicket} shopName={shop.name} close={() => setModal(null)} />} {notice && <div className="toast"><CheckCircle2 />{notice}</div>}</main>;
 }
 
-function AuthCard({ onSubmit, notice }: any) { return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>Todo lo que tu negocio necesita, en un solo flujo.</h1><p>Ingresá con tu correo para gestionar clientes, inventario, ventas, turnos y avisos con datos aislados por negocio.</p><form onSubmit={onSubmit}><label>Correo electrónico<input name="email" type="email" placeholder="nombre@negocio.com" required /></label><button className="primary full">Enviar enlace de acceso</button></form>{notice && <p className="form-note">{notice}</p>}</section></main>; }
+function AuthCard({ onPasswordLogin, onRequestAccount, onRequestRecovery, notice }: any) {
+  const [mode, setMode] = useState<"signin" | "signup" | "recovery">("signin");
+  const [pending, setPending] = useState(false);
+  const descriptions = {
+    signin: "Ingresá con tu email y contraseña para volver a tu negocio.",
+    signup: "Te enviaremos un enlace para verificar tu correo. Al abrirlo, vas a elegir tu contraseña personal.",
+    recovery: "Ingresá el email de tu cuenta y te enviaremos un enlace seguro para cambiar la contraseña.",
+  };
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      if (mode === "signin") await onPasswordLogin(event);
+      else if (mode === "signup") await onRequestAccount(event);
+      else await onRequestRecovery(event);
+    } finally {
+      setPending(false);
+    }
+  }
+  const title = mode === "signin" ? "Ingresá a PetFlow" : mode === "signup" ? "Creá tu cuenta" : "Recuperá tu acceso";
+  const buttonLabel = mode === "signin" ? "Iniciar sesión" : mode === "signup" ? "Enviar enlace para crear cuenta" : "Enviar enlace de recuperación";
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>{title}</h1><p>{descriptions[mode]}</p><form onSubmit={submit} aria-busy={pending}><label>Correo electrónico<input name="email" type="email" placeholder="nombre@negocio.com" autoComplete="email" required /></label>{mode === "signin" && <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>}<button className="primary full" disabled={pending}>{pending ? "Un momento…" : buttonLabel}</button></form><div className="auth-links">{mode === "signin" ? <><button type="button" className="auth-link" onClick={() => setMode("recovery")}>¿Olvidaste tu contraseña?</button><button type="button" className="auth-link" onClick={() => setMode("signup")}>Crear una cuenta</button></> : <button type="button" className="auth-link" onClick={() => setMode("signin")}>Volver a iniciar sesión</button>}</div>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}</section></main>;
+}
+function PasswordSetupCard({ email, onSubmit, onCancel, saving, notice }: any) {
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">CUENTA PERSONAL PETFLOW</p><h1>Creá tu contraseña</h1><p>El correo <strong>{email}</strong> será tu usuario. Elegí una contraseña para que la próxima vez ingreses directamente, sin pedir otro enlace.</p><form onSubmit={onSubmit}><label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={10} placeholder="Al menos 10 caracteres" required /></label><label>Confirmar contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={10} required /></label><button className="primary full" disabled={saving}>{saving ? "Guardando…" : "Guardar contraseña y continuar"}</button></form>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}<button type="button" className="auth-link auth-cancel" onClick={onCancel}>Cerrar sesión</button></section></main>;
+}
 function ShopSetup({ onSubmit, notice }: any) { return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">BIENVENIDO A PETFLOW</p><h1>Creá el espacio de tu pet shop.</h1><p>Tu primer usuario quedará configurado como propietario. Los datos se guardarán separados de los demás negocios.</p><form onSubmit={onSubmit}><label>Nombre del pet shop<input name="name" minLength={2} placeholder="Ej. Patitas del Sur" required /></label><button className="primary full">Crear mi pet shop</button></form>{notice && <p className="form-note">{notice}</p>}</section></main>; }
 function Summary({ products, sales, appointments, notes, setView }: any) { const today = new Date().toDateString(); const todaySales = sales.filter((sale: Sale) => new Date(sale.created_at).toDateString() === today); const low = products.filter((p: Product) => p.stock <= p.min_stock && p.active); const todayAppointments = appointments.filter((a: Appointment) => new Date(a.scheduled_at).toDateString() === today); const total = todaySales.reduce((sum: number, sale: Sale) => sum + Number(sale.total), 0); return <div className="stack"><section className="hero"><div><p className="kicker">PANEL OPERATIVO</p><h2>Las decisiones del día, a simple vista.</h2><p>Ventas, atención y reposición en una vista diseñada para avanzar rápido.</p></div><PawPrint className="hero-paw" /></section><div className="metrics"><Metric icon={<CircleDollarSign />} label="Ventas de hoy" value={formatter.format(total)} detail={`${todaySales.length} comprobantes`} /><Metric icon={<ShoppingCart />} label="Pedidos cobrados" value={todaySales.length} detail="Movimientos confirmados" /><Metric icon={<PackageSearch />} label="Stock a revisar" value={low.length} detail="Productos al mínimo" /><Metric icon={<CalendarDays />} label="Turnos de hoy" value={todayAppointments.length} detail="Servicios programados" /></div><div className="cards-grid"><Panel title="Próximos servicios" action="Abrir agenda" onAction={() => setView("agenda")}>{todayAppointments.length ? todayAppointments.slice(0, 5).map((a: Appointment) => <div className="row" key={a.id}><span className="time">{new Date(a.scheduled_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span><div><strong>{a.service}</strong><small>{statusLabel(a.status)}</small></div><span className="badge">{statusLabel(a.status)}</span></div>) : <Empty icon={<CalendarDays />} text="No hay turnos para hoy." />}</Panel><Panel title="Reposición" action="Ver inventario" onAction={() => setView("inventory")}>{low.length ? low.slice(0, 5).map((p: Product) => <div className="row" key={p.id}><div><strong>{p.name}</strong><small>Mínimo: {p.min_stock} unidades</small></div><span className="danger-pill">{p.stock}</span></div>) : <Empty icon={<CheckCircle2 />} text="Todo el inventario está en orden." />}</Panel><Panel title="Últimas ventas" action="Historial" onAction={() => setView("sales")}>{sales.length ? sales.slice(0, 5).map((sale: Sale) => <div className="row" key={sale.id}><div><strong>Venta #{sale.id.slice(0, 6).toUpperCase()}</strong><small>{new Date(sale.created_at).toLocaleString("es-AR")}</small></div><strong>{formatter.format(Number(sale.total))}</strong></div>) : <Empty icon={<ReceiptText />} text="Las ventas cobradas aparecerán aquí." />}</Panel><Panel title="Alertas activas" action="Gestionar" onAction={() => setView("alerts")}>{notes.filter((note: Note) => !note.read_at).length ? notes.filter((note: Note) => !note.read_at).slice(0, 4).map((note: Note) => <div className="row" key={note.id}><Bell className="icon-muted" /><div><strong>{note.title}</strong><small>{note.content}</small></div></div>) : <Empty icon={<Bell />} text="No hay alertas pendientes." />}</Panel></div></div>; }
 function Metric({ icon, label, value, detail }: any) { return <article className="metric"><div>{icon}</div><p>{label}</p><strong>{value}</strong><small>{detail}</small></article>; }
