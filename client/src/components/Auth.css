@@ -1,0 +1,37 @@
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 14px;
+}
+
+.auth-link {
+  background: transparent;
+  border: 0;
+  color: #28604f;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 0;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-link:hover {
+  color: #163d33;
+}
+
+.auth-link:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid #598878;
+  outline-offset: 3px;
+}
+
+.auth-cancel {
+  margin-top: 14px;
+}
+
+.entry-card .form-note {
+  line-height: 1.5;
+}

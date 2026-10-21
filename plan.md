@@ -34,3 +34,14 @@ Apertura/cierre persistente de caja y su conciliación, venta de monto libre, re
 ## Hallazgo de runtime durante la verificación
 
 El preview mostró pantalla en blanco porque `client/src/lib/supabase/client.ts` leía `process.env` en código del navegador. La implementación reemplaza esa lectura por `import.meta.env` y expone en Vite únicamente los prefijos públicos `VITE_` y `NEXT_PUBLIC_`, necesarios para las variables de Supabase que Netlify ya configura. No se debe usar esa configuración para variables privadas o claves de servicio.
+
+
+## Acceso persistente con email y contraseña
+
+- Mantener Supabase Auth como único gestor de credenciales; no almacenar contraseñas en tablas propias.
+- El acceso habitual será email + contraseña mediante `signInWithPassword`, con sesión persistente provista por el cliente Supabase.
+- El alta/configuración inicial solicita el email y envía un enlace de verificación con `signInWithOtp`. El enlace vuelve a PetFlow con un indicador de flujo, intercambia el código por sesión y muestra un formulario para elegir y confirmar una contraseña.
+- Incluir recuperación: `resetPasswordForEmail` redirige al mismo flujo seguro de creación de contraseña.
+- Con contraseña guardada, continuar el arranque actual de cuenta/negocio; no alterar membresías, tiendas ni datos operativos.
+- Implementar en `client/src/components/PetFlowApp.tsx` y conservar el diseño/estilos actuales. La URL de producción permitida de Supabase Auth debe incluir el origen `https://pettflow.netlify.app`; el código no requiere credenciales adicionales.
+- Entregar en una rama de feature y no fusionar ni desplegar a producción sin autorización.
