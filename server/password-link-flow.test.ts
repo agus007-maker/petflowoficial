@@ -9,6 +9,7 @@ describe("password link flow", () => {
 
   it("recognizes PKCE callbacks even if no custom flow query survives", () => {
     expect(detectPasswordLinkFlow("?code=pkce-code", "")).toBe("setup");
+    expect(detectPasswordLinkFlow("?flow=password-recovery&code=pkce-code", "")).toBe("recovery");
   });
 
   it("recognizes recovery tokens in query strings and fragments", () => {
