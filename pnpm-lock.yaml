@@ -221,6 +221,9 @@ importers:
       '@builder.io/vite-plugin-jsx-loc':
         specifier: ^0.1.1
         version: 0.1.1(vite@7.1.9(@types/node@24.7.0)(jiti@2.6.1)(lightningcss@1.30.1)(tsx@4.20.6))
+      '@netlify/functions':
+        specifier: ^6.0.3
+        version: 6.0.3
       '@tailwindcss/typography':
         specifier: ^0.5.15
         version: 0.5.19(tailwindcss@4.1.14)
@@ -1067,6 +1070,14 @@ packages:
 
   '@mermaid-js/parser@0.6.3':
     resolution: {integrity: sha512-lnjOhe7zyHjc+If7yT4zoedx2vo4sHaTmtkl1+or8BRTnCtDmcTpAjpzDSfCZrshM5bCoz0GyidzadJAH1xobA==}
+
+  '@netlify/functions@6.0.3':
+    resolution: {integrity: sha512-6KHpsR2L4VQL2gMm3VvG46xBNTga/SbOziluInR0++gkvOuQ/T2pxsxf2Rys5wOikpNY3Zv1IoE52/pWBJjZ9Q==}
+    engines: {node: '>=22.12.0'}
+
+  '@netlify/types@3.3.0':
+    resolution: {integrity: sha512-u/uh0vOFslJsTcG8nnynAKnTpVIakXbv3mkBG9DTqKZrDEzmfLKDZ3I7evHA3/CYUmNB24pNrzlHj2nIsqEwzg==}
+    engines: {node: '>=22.12.0'}
 
   '@radix-ui/number@1.1.1':
     resolution: {integrity: sha512-MkKCwxlXTgz6CFoJx3pCwn07GKp36+aZyu/u2Ln2VrA5DcdyCZkASEDBTd8x5whTQQL5CiYf4prXKLcgQdv29g==}
@@ -5380,6 +5391,12 @@ snapshots:
   '@mermaid-js/parser@0.6.3':
     dependencies:
       langium: 3.3.1
+
+  '@netlify/functions@6.0.3':
+    dependencies:
+      '@netlify/types': 3.3.0
+
+  '@netlify/types@3.3.0': {}
 
   '@radix-ui/number@1.1.1': {}
 
