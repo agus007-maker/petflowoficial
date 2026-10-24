@@ -35,3 +35,15 @@
 .entry-card .form-note {
   line-height: 1.5;
 }
+
+
+.auth-help {
+  color: #5b6d66;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: -4px 0 14px;
+}
+
+.entry-card label input:invalid:not(:placeholder-shown) {
+  border-color: #c97a70;
+}
