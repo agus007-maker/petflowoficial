@@ -21,3 +21,15 @@
 - [ ] “Olvidé mi contraseña” envía un enlace de recuperación y permite definir una contraseña nueva desde el regreso autenticado a PetFlow.
 - [ ] Tras establecer contraseña, los usuarios nuevos continúan el alta del pet shop y los usuarios existentes vuelven a su negocio y datos de membresía sin cambios.
 - [ ] Los enlaces de alta y recuperación regresan al dominio público PetFlow configurado, y la app muestra estados entendibles si el enlace vence o Supabase lo rechaza.
+
+## Recuperación y configuración de contraseña de cuentas existentes
+
+- [ ] Desde el acceso debe existir “Crear o configurar contraseña” para personas que antes entraban con enlace. Ingresan su email y reciben un enlace para una cuenta existente o nueva.
+- [ ] Al abrir el enlace de configuración, PetFlow ofrece crear y confirmar contraseña y no devuelve al login sin explicación.
+- [ ] “Olvidé mi contraseña” muestra el formulario de nueva contraseña tras validar sesión, reconociendo PKCE, query/hash y el evento Auth `PASSWORD_RECOVERY`.
+- [ ] Un enlace vencido o inválido explica cómo pedir otro; nunca permite cambiar la contraseña sin sesión autenticada.
+- [ ] Si email/contraseña falla, se orienta a usuarios antiguos hacia “Crear o configurar contraseña” sin revelar si un email existe.
+- [ ] Cada persona puede iniciar sesión con el correo o un nombre de usuario personal único; el correo sigue siendo el destino de los enlaces para crear/restablecer la contraseña. El nombre del local puede inspirar el alias, pero no se usa como identificador compartido porque puede repetirse o tener varios empleados.
+- [ ] El alias se guarda con unicidad, sin lectura pública de su email asociado, y su resolución ocurre en servidor; ninguna contraseña se almacena fuera de Supabase Auth.
+- [ ] El endpoint de alias aplica límites persistentes de intentos por IP y nombre, guarda solamente identificadores HMAC y devuelve el mismo error para alias o contraseña incorrectos.
+- [ ] Con la migración de aliases aún sin aplicar o la función server-side sin su secreto, el acceso por correo y la recuperación siguen funcionando; el alias informa claramente que falta configuración y no bloquea el acceso por email.

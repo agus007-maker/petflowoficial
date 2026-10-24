@@ -8,6 +8,7 @@
     "lib/**/*.ts",
     "server/**/*.ts",
     "shared/**/*.ts",
+    "netlify/functions/**/*.mts",
     "vite.config.ts"
   ],
   "exclude": [
