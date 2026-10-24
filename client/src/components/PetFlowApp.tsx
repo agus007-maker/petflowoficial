@@ -29,6 +29,9 @@ const sections: Array<{ id: View; label: string; icon: typeof CircleDollarSign }
 const categories = ["Alimentos", "Juguetes", "Higiene y salud", "Accesorios", "Descanso", "General"];
 const services = ["Baño y peluquería", "Consulta veterinaria", "Vacunación", "Corte de uñas", "Control antiparasitario"];
 const formatter = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
+const initialBrowserPasswordFlow: PasswordLinkFlow = typeof window === "undefined"
+  ? null
+  : detectPasswordLinkFlow(window.location.search, window.location.hash);
 const supabase = createClient();
 
 const emptyProduct = { name: "", sku: "", category: categories[0], stock: "0", min_stock: "3", cost_price: "0", sale_price: "", active: true };
@@ -38,12 +41,13 @@ export default function PetFlowApp() {
   const [products, setProducts] = useState<Product[]>([]); const [clients, setClients] = useState<Client[]>([]); const [appointments, setAppointments] = useState<Appointment[]>([]); const [sales, setSales] = useState<Sale[]>([]); const [notes, setNotes] = useState<Note[]>([]); const [settings, setSettings] = useState<any>({ reminders_enabled: true, reminder_lead_minutes: 60 });
   const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [passwordSetupRequired, setPasswordSetupRequired] = useState(false); const [savingPassword, setSavingPassword] = useState(false); const [authMode, setAuthMode] = useState<AuthMode>("signin"); const recoveryEventRef = useRef(false); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
 
+  const passwordLinkFlowRef = useRef<PasswordLinkFlow>(initialBrowserPasswordFlow);
   const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); };
   const fail = (error: any) => notify(error?.message || "No fue posible completar la operación.");
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const linkFlow = detectPasswordLinkFlow(window.location.search, window.location.hash);
+      const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
       if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && linkFlow === "recovery")) {
         recoveryEventRef.current = true;
         const signedInUser = session?.user ?? null;
@@ -61,7 +65,7 @@ export default function PetFlowApp() {
     });
     const fallback = window.setTimeout(() => setLoading(false), 1200);
     void boot().catch(() => {
-      const linkFlow = detectPasswordLinkFlow(window.location.search, window.location.hash);
+      const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
       setAuthMode(linkFlow === "recovery" ? "recovery" : linkFlow === "setup" ? "signup" : "signin");
       setLoading(false);
       notify(linkFlow
@@ -75,24 +79,7 @@ export default function PetFlowApp() {
   }, []);
   async function boot() {
     setLoading(true);
-    const linkFlow = detectPasswordLinkFlow(window.location.search, window.location.hash);
-    const code = new URLSearchParams(window.location.search).get("code");
-    if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        await supabase.auth.signOut();
-        setUser(null);
-        setPasswordSetupRequired(false);
-        const failedFlow: PasswordLinkFlow = linkFlow === "recovery" ? "recovery" : "setup";
-        setAuthMode(failedFlow === "recovery" ? "recovery" : "signup");
-        window.history.replaceState({}, document.title, window.location.pathname);
-        notify(failedFlow === "recovery"
-          ? "El enlace de recuperación venció o ya fue utilizado. Solicitá uno nuevo para cambiar la contraseña."
-          : "El enlace venció o ya fue utilizado. Solicitá uno nuevo para configurar la contraseña.");
-        setLoading(false);
-        return;
-      }
-    }
+    const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
     const { data: { session } } = await supabase.auth.getSession();
     const signedInUser = session?.user ?? null;
     setUser(signedInUser);
@@ -178,6 +165,8 @@ export default function PetFlowApp() {
         return notify("El acceso con nombre de usuario no está disponible todavía. Podés ingresar con tu correo.");
       }
     }
+    passwordLinkFlowRef.current = null;
+    recoveryEventRef.current = false;
     await boot();
   }
   async function requestAccountLink(event: FormEvent<HTMLFormElement>) {
@@ -225,6 +214,7 @@ export default function PetFlowApp() {
       }
       setUser(data.user);
       recoveryEventRef.current = false;
+      passwordLinkFlowRef.current = null;
       window.history.replaceState({}, document.title, window.location.pathname);
       await loadSignedInWorkspace(data.user);
       setPasswordSetupRequired(false);
@@ -236,7 +226,7 @@ export default function PetFlowApp() {
       setLoading(false);
     }
   }
-  async function signOut() { await supabase.auth.signOut(); recoveryEventRef.current = false; setUser(null); setShop(null); setProducts([]); setPasswordSetupRequired(false); setAuthMode("signin"); }
+  async function signOut() { await supabase.auth.signOut(); recoveryEventRef.current = false; passwordLinkFlowRef.current = null; setUser(null); setShop(null); setProducts([]); setPasswordSetupRequired(false); setAuthMode("signin"); }
 
   if (loading) return <div className="splash"><LoaderCircle className="spin" />Preparando PetFlow…</div>;
   if (!user) return <AuthCard onPasswordLogin={signInWithPassword} onRequestAccount={requestAccountLink} onRequestRecovery={requestPasswordRecovery} initialMode={authMode} notice={notice} />;
