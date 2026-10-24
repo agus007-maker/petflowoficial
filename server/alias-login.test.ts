@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handler } from "../netlify/functions/alias-login.mts";
+import type { Context } from "@netlify/functions";
+import { handleAliasLogin } from "../netlify/functions/alias-login.mts";
+
+const appOrigin = "https://pettflow.netlify.app";
+const contextFor = (ip: string) => ({ ip }) as Context;
+const makeRequest = (body: unknown, origin = appOrigin) => new Request(
+  `${appOrigin}/.netlify/functions/alias-login`,
+  {
+    method: "POST",
+    headers: { origin, "content-type": "application/json" },
+    body: JSON.stringify(body),
+  },
+);
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -10,12 +22,12 @@ describe("Netlify alias login", () => {
   it("rejects foreign origins before making any upstream request", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const result = await handler({
-      httpMethod: "POST",
-      headers: { origin: "https://malicious.example" },
-      body: JSON.stringify({ identifier: "petflow", password: "not-a-real-password" }),
-    });
-    expect(result.statusCode).toBe(403);
+    const result = await handleAliasLogin(
+      makeRequest({ identifier: "petflow", password: "not-a-real-password" }, "https://malicious.example"),
+      contextFor("203.0.113.8"),
+    );
+    expect(result.status).toBe(403);
+    expect(result.headers.get("access-control-allow-origin")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -35,14 +47,14 @@ describe("Netlify alias login", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await handler({
-      httpMethod: "POST",
-      headers: { origin: "https://pettflow.netlify.app", "x-nf-client-connection-ip": "203.0.113.8" },
-      body: JSON.stringify({ identifier: "petflow", password: "not-a-real-password" }),
-    });
-    expect(result.statusCode).toBe(401);
-    expect(result.body).toContain("No coincide el nombre de usuario o la contraseña");
-    expect(result.body).not.toContain("@");
+    const result = await handleAliasLogin(
+      makeRequest({ identifier: "petflow", password: "not-a-real-password" }),
+      contextFor("203.0.113.8"),
+    );
+    const body = await result.text();
+    expect(result.status).toBe(401);
+    expect(body).toContain("No coincide el nombre de usuario o la contraseña");
+    expect(body).not.toContain("@");
   });
 
   it("returns only auth session tokens after a successful alias login", async () => {
@@ -74,16 +86,31 @@ describe("Netlify alias login", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await handler({
-      httpMethod: "POST",
-      headers: { origin: "https://pettflow.netlify.app", "x-nf-client-connection-ip": "203.0.113.9" },
-      body: JSON.stringify({ identifier: "Patitas.Martinez", password: "correct-test-password" }),
-    });
+    const result = await handleAliasLogin(
+      makeRequest({ identifier: "Patitas.Martinez", password: "correct-test-password" }),
+      contextFor("203.0.113.9"),
+    );
+    const body = await result.text();
 
-    expect(result.statusCode).toBe(200);
-    expect(result.body).toContain("access-test-token");
-    expect(result.body).toContain("refresh-test-token");
-    expect(result.body).not.toContain(internalEmail);
+    expect(result.status).toBe(200);
+    expect(body).toContain("access-test-token");
+    expect(body).toContain("refresh-test-token");
+    expect(body).not.toContain(internalEmail);
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("fails closed when the server-only key is not configured", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://petflow-test.supabase.co");
+    vi.stubEnv("SUPABASE_ANON_KEY", "public-test-key");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await handleAliasLogin(
+      makeRequest({ identifier: "petflow", password: "not-a-real-password" }),
+      contextFor("203.0.113.10"),
+    );
+    expect(result.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
