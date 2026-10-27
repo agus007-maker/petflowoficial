@@ -26,3 +26,20 @@ export function detectPasswordLinkFlow(search: string, hash: string): PasswordLi
   }
   return null;
 }
+
+export type TokenHashLink = { tokenHash: string; type: "recovery" | "email" };
+
+/**
+ * Enlace "directo" de la plantilla de correo (…/?token_hash=XXXX&type=recovery).
+ * A diferencia del enlace PKCE (?code=…), no depende del navegador/dispositivo donde se
+ * pidió el correo, así que funciona aunque se abra desde el celular o desde otro navegador.
+ */
+export function readTokenHashLink(search: string, hash: string): TokenHashLink | null {
+  const query = readParams(search);
+  const fragment = readParams(hash);
+  const tokenHash = query.get("token_hash") ?? fragment.get("token_hash");
+  if (!tokenHash) return null;
+  const type = query.get("type") ?? fragment.get("type");
+  const flow = query.get("flow") ?? fragment.get("flow");
+  return { tokenHash, type: type === "recovery" || flow === "password-recovery" ? "recovery" : "email" };
+}
