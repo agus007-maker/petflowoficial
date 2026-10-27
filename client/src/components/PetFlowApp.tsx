@@ -5,7 +5,7 @@ import "./PetFlowPos.css";
 import "./Auth.css";
 import { Banknote, Bell, CalendarDays, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Download, Edit3, FileSpreadsheet, LoaderCircle, LogOut, PackageSearch, PawPrint, Percent, Plus, Printer, ReceiptText, Search, Settings2, ShoppingCart, ShieldCheck, Users, UserCog, X } from "lucide-react";
 import { createClient, getPublicAppUrl } from "@/lib/supabase/client";
-import { detectPasswordLinkFlow, type PasswordLinkFlow } from "@/lib/password-link-flow";
+import { detectPasswordLinkFlow, readTokenHashLink, type PasswordLinkFlow, type TokenHashLink } from "@/lib/password-link-flow";
 import { downloadTicketPdf, paymentLabel, printTicket } from "@/lib/tickets";
 import { prepareSaleRequest, validateProductDraft } from "@/lib/petflow-rules";
 import ManagementPanel from "@/components/ManagementPanel";
@@ -32,18 +32,30 @@ const formatter = new Intl.NumberFormat("es-AR", { style: "currency", currency: 
 const initialBrowserPasswordFlow: PasswordLinkFlow = typeof window === "undefined"
   ? null
   : detectPasswordLinkFlow(window.location.search, window.location.hash);
+const initialTokenLink: TokenHashLink | null = typeof window === "undefined"
+  ? null
+  : readTokenHashLink(window.location.search, window.location.hash);
 const supabase = createClient();
+
+function authErrorMessage(error: any): string {
+  const code = error?.code ?? "";
+  if (code === "over_email_send_rate_limit" || error?.status === 429) {
+    return "Pediste varios correos seguidos. Esperá un minuto y probá de nuevo (usá siempre el último correo que te llegue).";
+  }
+  if (code === "email_not_confirmed") return "Primero confirmá tu correo con el enlace que te enviamos.";
+  return error?.message || "No fue posible completar la operación.";
+}
 
 const emptyProduct = { name: "", sku: "", category: categories[0], stock: "0", min_stock: "3", cost_price: "0", sale_price: "", active: true };
 
 export default function PetFlowApp() {
   const [user, setUser] = useState<any>(null); const [shop, setShop] = useState<Shop | null>(null); const [view, setView] = useState<View>("summary");
   const [products, setProducts] = useState<Product[]>([]); const [clients, setClients] = useState<Client[]>([]); const [appointments, setAppointments] = useState<Appointment[]>([]); const [sales, setSales] = useState<Sale[]>([]); const [notes, setNotes] = useState<Note[]>([]); const [settings, setSettings] = useState<any>({ reminders_enabled: true, reminder_lead_minutes: 60 });
-  const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [passwordSetupRequired, setPasswordSetupRequired] = useState(false); const [savingPassword, setSavingPassword] = useState(false); const [authMode, setAuthMode] = useState<AuthMode>("signin"); const recoveryEventRef = useRef(false); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
+  const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [passwordSetupRequired, setPasswordSetupRequired] = useState(false); const [savingPassword, setSavingPassword] = useState(false); const [authMode, setAuthMode] = useState<AuthMode>(initialTokenLink ? (initialTokenLink.type === "recovery" ? "recovery" : "signup") : "signin"); const [pendingLink, setPendingLink] = useState<TokenHashLink | null>(initialTokenLink); const [confirmingLink, setConfirmingLink] = useState(false); const tokenLinkRef = useRef<TokenHashLink | null>(initialTokenLink); const noticeTimerRef = useRef<number | undefined>(undefined); const recoveryEventRef = useRef(false); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
 
   const passwordLinkFlowRef = useRef<PasswordLinkFlow>(initialBrowserPasswordFlow);
-  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); };
-  const fail = (error: any) => notify(error?.message || "No fue posible completar la operación.");
+  const notify = (message: string) => { setNotice(message); window.clearTimeout(noticeTimerRef.current); noticeTimerRef.current = window.setTimeout(() => setNotice(""), 8000); };
+  const fail = (error: any) => notify(authErrorMessage(error));
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -79,6 +91,15 @@ export default function PetFlowApp() {
   }, []);
   async function boot() {
     setLoading(true);
+    if (tokenLinkRef.current) {
+      // Enlace del correo: esperamos a que la persona toque "Continuar" antes de consumir el token
+      // (así los antivirus/escáneres de correo no lo gastan al "visitar" el enlace).
+      setPendingLink(tokenLinkRef.current);
+      setAuthMode(tokenLinkRef.current.type === "recovery" ? "recovery" : "signup");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      setLoading(false);
+      return;
+    }
     const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
     const { data: { session } } = await supabase.auth.getSession();
     const signedInUser = session?.user ?? null;
@@ -101,6 +122,31 @@ export default function PetFlowApp() {
     }
     setLoading(false);
   }
+  async function confirmEmailLink() {
+    const link = pendingLink;
+    if (!link) return;
+    setConfirmingLink(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ token_hash: link.tokenHash, type: link.type });
+      tokenLinkRef.current = null;
+      setPendingLink(null);
+      if (error || !data.user) {
+        setUser(null);
+        setPasswordSetupRequired(false);
+        setAuthMode(link.type === "recovery" ? "recovery" : "signup");
+        notify("El enlace venció o ya se usó. Pedí uno nuevo y abrí el último correo que te llegue.");
+        return;
+      }
+      recoveryEventRef.current = link.type === "recovery";
+      passwordLinkFlowRef.current = link.type === "recovery" ? "recovery" : "setup";
+      setUser(data.user);
+      setAuthMode(link.type === "recovery" ? "recovery" : "signup");
+      setPasswordSetupRequired(true);
+    } finally {
+      setConfirmingLink(false);
+    }
+  }
+  function discardEmailLink() { tokenLinkRef.current = null; setPendingLink(null); setAuthMode("signin"); }
   async function loadSignedInWorkspace(signedInUser: any) {
     const { data, error } = await supabase.from("pet_shop_memberships").select("pet_shop:pet_shops(id,name,timezone,owner_user_id)").eq("user_id", signedInUser.id).limit(1);
     if (error) return fail(error);
@@ -141,7 +187,7 @@ export default function PetFlowApp() {
       const { error } = await supabase.auth.signInWithPassword({ email: identifier, password });
       if (error) {
         if (error.code === "invalid_credentials") {
-          return notify("No coincide el correo o la contraseña. Si antes entrabas con enlace, elegí «Crear o configurar contraseña» para establecer tu clave.");
+          return notify("No coincide el correo o la contraseña. Si todavía no tenés contraseña (antes entrabas con enlace), tocá «¿Olvidaste tu contraseña o nunca configuraste una?» para crearla.");
         }
         return fail(error);
       }
@@ -166,6 +212,7 @@ export default function PetFlowApp() {
       }
     }
     passwordLinkFlowRef.current = null;
+    tokenLinkRef.current = null;
     recoveryEventRef.current = false;
     await boot();
   }
@@ -229,6 +276,7 @@ export default function PetFlowApp() {
   async function signOut() { await supabase.auth.signOut(); recoveryEventRef.current = false; passwordLinkFlowRef.current = null; setUser(null); setShop(null); setProducts([]); setPasswordSetupRequired(false); setAuthMode("signin"); }
 
   if (loading) return <div className="splash"><LoaderCircle className="spin" />Preparando PetFlow…</div>;
+  if (pendingLink) return <ConfirmLinkCard mode={pendingLink.type === "recovery" ? "recovery" : "signup"} onConfirm={confirmEmailLink} onCancel={discardEmailLink} busy={confirmingLink} notice={notice} />;
   if (!user) return <AuthCard onPasswordLogin={signInWithPassword} onRequestAccount={requestAccountLink} onRequestRecovery={requestPasswordRecovery} initialMode={authMode} notice={notice} />;
   if (passwordSetupRequired) return <PasswordSetupCard email={user.email} mode={authMode} onSubmit={savePassword} onCancel={signOut} saving={savingPassword} notice={notice} />;
   if (!shop) return <ShopSetup onSubmit={createShop} notice={notice} />;
@@ -243,7 +291,7 @@ function AuthCard({ onPasswordLogin, onRequestAccount, onRequestRecovery, initia
   const descriptions: Record<AuthMode, string> = {
     signin: "Usá el correo o tu nombre de usuario personal y tu contraseña.",
     signup: "Si es tu primera vez, crearás tu cuenta. Si ya entrabas con enlace, usá el mismo correo. Te enviaremos un enlace para crear tu contraseña y, si querés, un nombre de usuario único.",
-    recovery: "Ingresá el correo asociado a la cuenta. Te enviaremos allí un enlace seguro para elegir una contraseña nueva.",
+    recovery: "Ingresá el correo de tu cuenta. Te enviaremos un enlace seguro para elegir una contraseña nueva. Si todavía no configuraste ninguna, también sirve para crearla por primera vez.",
   };
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -258,7 +306,11 @@ function AuthCard({ onPasswordLogin, onRequestAccount, onRequestRecovery, initia
   }
   const title = mode === "signin" ? "Ingresá a PetFlow" : mode === "signup" ? "Crear cuenta o configurar contraseña" : "Recuperá tu acceso";
   const buttonLabel = mode === "signin" ? "Iniciar sesión" : mode === "signup" ? "Enviarme el enlace seguro" : "Enviar enlace de recuperación";
-  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>{title}</h1><p>{descriptions[mode]}</p><form onSubmit={submit} aria-busy={pending}><label>{mode === "signin" ? "Correo o nombre de usuario" : "Correo electrónico"}<input name={mode === "signin" ? "identifier" : "email"} type={mode === "signin" ? "text" : "email"} placeholder={mode === "signin" ? "tu correo o tu usuario" : "nombre@negocio.com"} autoComplete={mode === "signin" ? "username" : "email"} required /></label>{mode === "signin" && <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>}<button className="primary full" disabled={pending}>{pending ? "Un momento…" : buttonLabel}</button></form><div className="auth-links">{mode === "signin" ? <><button type="button" className="auth-link" onClick={() => setMode("recovery")}>¿Olvidaste tu contraseña?</button><button type="button" className="auth-link" onClick={() => setMode("signup")}>Crear cuenta o configurar contraseña</button></> : <button type="button" className="auth-link" onClick={() => setMode("signin")}>Volver a iniciar sesión</button>}</div>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}</section></main>;
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>{title}</h1><p>{descriptions[mode]}</p><form onSubmit={submit} aria-busy={pending}><label>{mode === "signin" ? "Correo o nombre de usuario" : "Correo electrónico"}<input name={mode === "signin" ? "identifier" : "email"} type={mode === "signin" ? "text" : "email"} placeholder={mode === "signin" ? "tu correo o tu usuario" : "nombre@negocio.com"} autoComplete={mode === "signin" ? "username" : "email"} required /></label>{mode === "signin" && <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>}<button className="primary full" disabled={pending}>{pending ? "Un momento…" : buttonLabel}</button></form><div className="auth-links">{mode === "signin" ? <><button type="button" className="auth-link" onClick={() => setMode("recovery")}>¿Olvidaste tu contraseña o nunca configuraste una?</button><button type="button" className="auth-link" onClick={() => setMode("signup")}>Crear cuenta o configurar contraseña</button></> : <button type="button" className="auth-link" onClick={() => setMode("signin")}>Volver a iniciar sesión</button>}</div>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}</section></main>;
+}
+function ConfirmLinkCard({ mode, onConfirm, onCancel, busy, notice }: any) {
+  const recovery = mode === "recovery";
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">ENLACE SEGURO</p><h1>{recovery ? "Cambiá tu contraseña" : "Confirmá tu correo"}</h1><p>{recovery ? "Tocá el botón para validar el enlace y elegir tu nueva contraseña." : "Tocá el botón para validar el enlace y crear tu contraseña."}</p><button className="primary full" onClick={onConfirm} disabled={busy}>{busy ? "Validando…" : "Continuar"}</button>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}<button type="button" className="auth-link auth-cancel" onClick={onCancel}>Volver a iniciar sesión</button></section></main>;
 }
 function PasswordSetupCard({ email, mode, onSubmit, onCancel, saving, notice }: any) {
   const recovery = mode === "recovery";
