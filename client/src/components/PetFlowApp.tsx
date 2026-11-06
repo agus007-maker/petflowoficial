@@ -2,14 +2,17 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./PetFlowPos.css";
+import "./Auth.css";
 import { Banknote, Bell, CalendarDays, CheckCircle2, ChevronDown, CircleDollarSign, ClipboardList, Download, Edit3, FileSpreadsheet, LoaderCircle, LogOut, PackageSearch, PawPrint, Percent, Plus, Printer, ReceiptText, Search, Settings2, ShoppingCart, ShieldCheck, Users, UserCog, X } from "lucide-react";
 import { createClient, getPublicAppUrl } from "@/lib/supabase/client";
+import { detectPasswordLinkFlow, readTokenHashLink, type PasswordLinkFlow, type TokenHashLink } from "@/lib/password-link-flow";
 import { downloadTicketPdf, paymentLabel, printTicket } from "@/lib/tickets";
 import { prepareSaleRequest, validateProductDraft } from "@/lib/petflow-rules";
 import ManagementPanel from "@/components/ManagementPanel";
 import CashRegisterPanel from "@/components/CashRegisterPanel";
 
 type View = "summary" | "cash" | "inventory" | "pos" | "sales" | "clients" | "agenda" | "alerts" | "management";
+type AuthMode = "signin" | "signup" | "recovery";
 type Product = { id: string; name: string; sku?: string | null; category: string; stock: number; min_stock: number; cost_price: number | string; sale_price: number | string; active: boolean };
 type Client = { id: string; full_name: string; phone?: string | null; email?: string | null; notes?: string | null; pets: Pet[] };
 type Pet = { id: string; client_id: string; name: string; species: string; breed?: string | null; notes?: string | null };
@@ -26,46 +29,130 @@ const sections: Array<{ id: View; label: string; icon: typeof CircleDollarSign }
 const categories = ["Alimentos", "Juguetes", "Higiene y salud", "Accesorios", "Descanso", "General"];
 const services = ["Baño y peluquería", "Consulta veterinaria", "Vacunación", "Corte de uñas", "Control antiparasitario"];
 const formatter = new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
+const initialBrowserPasswordFlow: PasswordLinkFlow = typeof window === "undefined"
+  ? null
+  : detectPasswordLinkFlow(window.location.search, window.location.hash);
+const initialTokenLink: TokenHashLink | null = typeof window === "undefined"
+  ? null
+  : readTokenHashLink(window.location.search, window.location.hash);
 const supabase = createClient();
+
+function authErrorMessage(error: any): string {
+  const code = error?.code ?? "";
+  if (code === "over_email_send_rate_limit" || error?.status === 429) {
+    return "Pediste varios correos seguidos. Esperá un minuto y probá de nuevo (usá siempre el último correo que te llegue).";
+  }
+  if (code === "email_not_confirmed") return "Primero confirmá tu correo con el enlace que te enviamos.";
+  return error?.message || "No fue posible completar la operación.";
+}
 
 const emptyProduct = { name: "", sku: "", category: categories[0], stock: "0", min_stock: "3", cost_price: "0", sale_price: "", active: true };
 
 export default function PetFlowApp() {
   const [user, setUser] = useState<any>(null); const [shop, setShop] = useState<Shop | null>(null); const [view, setView] = useState<View>("summary");
   const [products, setProducts] = useState<Product[]>([]); const [clients, setClients] = useState<Client[]>([]); const [appointments, setAppointments] = useState<Appointment[]>([]); const [sales, setSales] = useState<Sale[]>([]); const [notes, setNotes] = useState<Note[]>([]); const [settings, setSettings] = useState<any>({ reminders_enabled: true, reminder_lead_minutes: 60 });
-  const [loading, setLoading] = useState(false); const [credentialsReady, setCredentialsReady] = useState<boolean | null>(null); const [notice, setNotice] = useState(""); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
+  const [loading, setLoading] = useState(false); const [notice, setNotice] = useState(""); const [passwordSetupRequired, setPasswordSetupRequired] = useState(false); const [savingPassword, setSavingPassword] = useState(false); const [authMode, setAuthMode] = useState<AuthMode>(initialTokenLink ? (initialTokenLink.type === "recovery" ? "recovery" : "signup") : "signin"); const [pendingLink, setPendingLink] = useState<TokenHashLink | null>(initialTokenLink); const [confirmingLink, setConfirmingLink] = useState(false); const tokenLinkRef = useRef<TokenHashLink | null>(initialTokenLink); const noticeTimerRef = useRef<number | undefined>(undefined); const recoveryEventRef = useRef(false); const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | "ticket" | null>(null); const [editing, setEditing] = useState<Product | null>(null); const [selectedClient, setSelectedClient] = useState<Client | null>(null); const [selectedTicket, setSelectedTicket] = useState<Sale | null>(null);
 
-  const notify = (message: string) => { setNotice(message); window.setTimeout(() => setNotice(""), 3200); };
-  const fail = (error: any) => notify(error?.message || "No fue posible completar la operación.");
+  const passwordLinkFlowRef = useRef<PasswordLinkFlow>(initialBrowserPasswordFlow);
+  const notify = (message: string) => { setNotice(message); window.clearTimeout(noticeTimerRef.current); noticeTimerRef.current = window.setTimeout(() => setNotice(""), 8000); };
+  const fail = (error: any) => notify(authErrorMessage(error));
 
   useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
+      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && linkFlow === "recovery")) {
+        recoveryEventRef.current = true;
+        const signedInUser = session?.user ?? null;
+        setUser(signedInUser);
+        setAuthMode("recovery");
+        setPasswordSetupRequired(Boolean(signedInUser));
+        if (!signedInUser) notify("No se pudo validar el enlace. Solicitá uno nuevo para cambiar la contraseña.");
+        setLoading(false);
+      } else if (event === "SIGNED_IN" && linkFlow === "setup") {
+        setUser(session?.user ?? null);
+        setAuthMode("signup");
+        setPasswordSetupRequired(Boolean(session?.user));
+        setLoading(false);
+      }
+    });
     const fallback = window.setTimeout(() => setLoading(false), 1200);
-    void boot().finally(() => window.clearTimeout(fallback));
-    return () => window.clearTimeout(fallback);
+    void boot().catch(() => {
+      const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
+      setAuthMode(linkFlow === "recovery" ? "recovery" : linkFlow === "setup" ? "signup" : "signin");
+      setLoading(false);
+      notify(linkFlow
+        ? "No pudimos validar el enlace. Solicitá otro desde tu correo e intentá nuevamente."
+        : "No pudimos abrir tu sesión. Probá ingresar de nuevo con tu correo.");
+    }).finally(() => window.clearTimeout(fallback));
+    return () => {
+      window.clearTimeout(fallback);
+      subscription.unsubscribe();
+    };
   }, []);
   async function boot() {
     setLoading(true);
-    const code = new URLSearchParams(window.location.search).get("code");
-    if (code) {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) fail(error);
+    if (tokenLinkRef.current) {
+      // Enlace del correo: esperamos a que la persona toque "Continuar" antes de consumir el token
+      // (así los antivirus/escáneres de correo no lo gastan al "visitar" el enlace).
+      setPendingLink(tokenLinkRef.current);
+      setAuthMode(tokenLinkRef.current.type === "recovery" ? "recovery" : "signup");
       window.history.replaceState({}, document.title, window.location.pathname);
+      setLoading(false);
+      return;
     }
+    const linkFlow = passwordLinkFlowRef.current ?? detectPasswordLinkFlow(window.location.search, window.location.hash);
     const { data: { session } } = await supabase.auth.getSession();
     const signedInUser = session?.user ?? null;
     setUser(signedInUser);
-    if (signedInUser) {
-      const profileResult = await supabase.from("user_login_profiles").select("username").eq("user_id", signedInUser.id).maybeSingle();
-      if (profileResult.error?.code === "42P01") setCredentialsReady(true);
-      else if (profileResult.error) { fail(profileResult.error); setCredentialsReady(true); }
-      else setCredentialsReady(Boolean(profileResult.data));
-      const { data, error } = await supabase.from("pet_shop_memberships").select("pet_shop:pet_shops(id,name,timezone,owner_user_id)").eq("user_id", signedInUser.id).limit(1);
-      if (error) fail(error);
-      const currentShop = (data?.[0] as any)?.pet_shop as Shop | undefined;
-      setShop(currentShop ?? null);
-      if (currentShop) await loadWorkspace(currentShop.id);
+    const resolvedFlow: PasswordLinkFlow = recoveryEventRef.current ? "recovery" : linkFlow;
+    if (signedInUser && resolvedFlow) {
+      setAuthMode(resolvedFlow === "recovery" ? "recovery" : "signup");
+      setPasswordSetupRequired(true);
+    } else if (signedInUser) {
+      await loadSignedInWorkspace(signedInUser);
+    } else if (resolvedFlow) {
+      setPasswordSetupRequired(false);
+      setAuthMode(resolvedFlow === "recovery" ? "recovery" : "signup");
+      notify(resolvedFlow === "recovery"
+        ? "No se abrió una sesión de recuperación válida. Solicitá otro enlace con tu correo."
+        : "No se abrió una sesión válida. Solicitá un enlace nuevo para configurar la contraseña.");
+    }
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
     setLoading(false);
+  }
+  async function confirmEmailLink() {
+    const link = pendingLink;
+    if (!link) return;
+    setConfirmingLink(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({ token_hash: link.tokenHash, type: link.type });
+      tokenLinkRef.current = null;
+      setPendingLink(null);
+      if (error || !data.user) {
+        setUser(null);
+        setPasswordSetupRequired(false);
+        setAuthMode(link.type === "recovery" ? "recovery" : "signup");
+        notify("El enlace venció o ya se usó. Pedí uno nuevo y abrí el último correo que te llegue.");
+        return;
+      }
+      recoveryEventRef.current = link.type === "recovery";
+      passwordLinkFlowRef.current = link.type === "recovery" ? "recovery" : "setup";
+      setUser(data.user);
+      setAuthMode(link.type === "recovery" ? "recovery" : "signup");
+      setPasswordSetupRequired(true);
+    } finally {
+      setConfirmingLink(false);
+    }
+  }
+  function discardEmailLink() { tokenLinkRef.current = null; setPendingLink(null); setAuthMode("signin"); }
+  async function loadSignedInWorkspace(signedInUser: any) {
+    const { data, error } = await supabase.from("pet_shop_memberships").select("pet_shop:pet_shops(id,name,timezone,owner_user_id)").eq("user_id", signedInUser.id).limit(1);
+    if (error) return fail(error);
+    const currentShop = (data?.[0] as any)?.pet_shop as Shop | undefined;
+    setShop(currentShop ?? null);
+    if (currentShop) await loadWorkspace(currentShop.id);
   }
   async function loadWorkspace(shopId = shop?.id) {
     if (!shopId) return;
@@ -89,21 +176,146 @@ export default function PetFlowApp() {
     setNotes((noteRes.data ?? []) as Note[]); setSettings(settingRes.data ?? { reminders_enabled: true, reminder_lead_minutes: 60 });
   }
   async function createShop(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const name = new FormData(event.currentTarget).get("name")?.toString().trim(); if (!name || !user) return; const { data, error } = await supabase.from("pet_shops").insert({ name, owner_user_id: user.id }).select().single(); if (error) return fail(error); setShop(data); await loadWorkspace(data.id); notify("Pet shop creado. Ya podés comenzar a operar."); }
-  async function signIn(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const email = new FormData(event.currentTarget).get("email")?.toString().trim(); if (!email) return; const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${getPublicAppUrl()}/` } }); if (error) return fail(error); notify("Revisá tu correo para continuar con el enlace de acceso."); }
-  async function signInWithPassword(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const response = await fetch("/api/auth/credentials/sign-in", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: form.get("username"), password: form.get("password") }) }); const result = await response.json().catch(() => ({})); if (!response.ok) return fail(new Error(result.message || "Usuario o contraseña incorrectos.")); const { error } = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token }); if (error) return fail(error); await boot(); }
-  async function setupCredentials(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const form = new FormData(event.currentTarget); const { data: { session } } = await supabase.auth.getSession(); if (!session) return fail(new Error("La sesión inicial expiró. Solicitá un nuevo enlace.")); const response = await fetch("/api/auth/credentials/setup", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ username: form.get("username"), password: form.get("password"), passwordConfirmation: form.get("passwordConfirmation") }) }); const result = await response.json().catch(() => ({})); if (!response.ok) return fail(new Error(result.message || "No fue posible guardar las credenciales.")); setCredentialsReady(true); notify(`Usuario ${result.username} creado. La próxima vez ingresá con él y tu contraseña.`); }
-  async function signOut() { await supabase.auth.signOut(); setUser(null); setShop(null); setProducts([]); }
+  async function signInWithPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const identifier = form.get("identifier")?.toString().trim();
+    const password = form.get("password")?.toString();
+    if (!identifier || !password) return;
+
+    if (identifier.includes("@")) {
+      const { error } = await supabase.auth.signInWithPassword({ email: identifier, password });
+      if (error) {
+        if (error.code === "invalid_credentials") {
+          return notify("No coincide el correo o la contraseña. Si todavía no tenés contraseña (antes entrabas con enlace), tocá «¿Olvidaste tu contraseña o nunca configuraste una?» para crearla.");
+        }
+        return fail(error);
+      }
+    } else {
+      try {
+        const response = await fetch("/.netlify/functions/alias-login", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ identifier, password }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          return notify(typeof result.error === "string" ? result.error : "No pudimos validar el usuario. Ingresá con tu correo o probá de nuevo.");
+        }
+        const { error } = await supabase.auth.setSession({
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+        });
+        if (error) return notify("No pudimos iniciar la sesión. Probá con tu correo o volvé a pedir un enlace.");
+      } catch {
+        return notify("El acceso con nombre de usuario no está disponible todavía. Podés ingresar con tu correo.");
+      }
+    }
+    passwordLinkFlowRef.current = null;
+    tokenLinkRef.current = null;
+    recoveryEventRef.current = false;
+    await boot();
+  }
+  async function requestAccountLink(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
+    if (!email) return;
+    const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: getPublicAppUrl(), shouldCreateUser: true } });
+    if (error) return fail(error);
+    notify("Si el correo puede registrarse, te enviamos un enlace. Al abrirlo vas a poder elegir tu contraseña.");
+  }
+  async function requestPasswordRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const email = new FormData(event.currentTarget).get("email")?.toString().trim();
+    if (!email) return;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: getPublicAppUrl() });
+    if (error) return fail(error);
+    notify("Si existe una cuenta con ese correo, te enviamos un enlace para restablecer la contraseña.");
+  }
+  async function savePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const password = form.get("password")?.toString() ?? "";
+    const confirmation = form.get("confirmPassword")?.toString() ?? "";
+    const loginName = form.get("loginName")?.toString().trim() ?? "";
+    if (password.length < 10) return notify("La contraseña debe tener al menos 10 caracteres.");
+    if (password !== confirmation) return notify("Las contraseñas no coinciden.");
+    setSavingPassword(true);
+    try {
+      if (loginName) {
+        const { error: nameError } = await supabase.rpc("set_petflow_login_name", { p_login_name: loginName });
+        if (nameError) {
+          notify("Ese nombre no se pudo guardar. Elegí otro o dejá el campo vacío para continuar con tu correo.");
+          return;
+        }
+      }
+      setLoading(true);
+      const { data, error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        fail(error);
+        return;
+      }
+      if (!data.user) {
+        notify("No pudimos confirmar la cuenta. Volvé a abrir el enlace de tu correo.");
+        return;
+      }
+      setUser(data.user);
+      recoveryEventRef.current = false;
+      passwordLinkFlowRef.current = null;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      await loadSignedInWorkspace(data.user);
+      setPasswordSetupRequired(false);
+      notify(loginName
+        ? "Listo. Ya podés entrar con tu nombre de usuario o con tu correo."
+        : "Listo. Ya podés entrar con tu correo y contraseña.");
+    } finally {
+      setSavingPassword(false);
+      setLoading(false);
+    }
+  }
+  async function signOut() { await supabase.auth.signOut(); recoveryEventRef.current = false; passwordLinkFlowRef.current = null; setUser(null); setShop(null); setProducts([]); setPasswordSetupRequired(false); setAuthMode("signin"); }
 
   if (loading) return <div className="splash"><LoaderCircle className="spin" />Preparando PetFlow…</div>;
-  if (!user) return <AuthCard onMagicLink={signIn} onPasswordSubmit={signInWithPassword} notice={notice} />;
-  if (credentialsReady === false) return <CredentialSetup onSubmit={setupCredentials} notice={notice} />;
+  if (pendingLink) return <ConfirmLinkCard mode={pendingLink.type === "recovery" ? "recovery" : "signup"} onConfirm={confirmEmailLink} onCancel={discardEmailLink} busy={confirmingLink} notice={notice} />;
+  if (!user) return <AuthCard onPasswordLogin={signInWithPassword} onRequestAccount={requestAccountLink} onRequestRecovery={requestPasswordRecovery} initialMode={authMode} notice={notice} />;
+  if (passwordSetupRequired) return <PasswordSetupCard email={user.email} mode={authMode} onSubmit={savePassword} onCancel={signOut} saving={savingPassword} notice={notice} />;
   if (!shop) return <ShopSetup onSubmit={createShop} notice={notice} />;
   const unread = notes.filter(note => !note.read_at).length; const isOwner = shop.owner_user_id === user.id;
   return <main className={view === "pos" ? "app-shell pos-mode" : "app-shell"}><aside className="side"><div className="brand"><PawPrint /><span>pet<span>flow</span></span></div><p className="shop-name">{shop.name}</p><nav>{sections.filter(section => section.id !== "management" || isOwner).map(section => { const Icon = section.icon; return <button key={section.id} className={view === section.id ? "nav-active" : ""} onClick={() => setView(section.id)}><Icon />{section.label}{section.id === "alerts" && unread ? <b>{unread}</b> : null}</button>; })}</nav><button className="logout" onClick={signOut}><LogOut />Cerrar sesión</button></aside><section className="content"><header className="topbar"><div><p className="kicker">OPERACIÓN DIARIA · {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p><h1>{sections.find(section => section.id === view)?.label}</h1></div><button className="primary" onClick={() => setModal("appointment")}><Plus />Nuevo turno</button></header>{view === "summary" && <Summary products={products} sales={sales} appointments={appointments} notes={notes} setView={setView} />} {view === "cash" && <CashRegisterPanel shopId={shop.id} sales={sales} fail={fail} />} {view === "inventory" && <Inventory products={products} edit={(product: Product) => { setEditing(product); setModal("product"); }} add={() => { setEditing(null); setModal("product"); }} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "pos" && <PointOfSale products={products.filter(product => product.active)} clients={clients} shop={shop} reload={loadWorkspace} fail={fail} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "sales" && <SalesHistory sales={sales} showTicket={(sale: Sale) => { setSelectedTicket(sale); setModal("ticket"); }} />} {view === "clients" && <ClientsPanel clients={clients} sales={sales} selected={selectedClient} select={setSelectedClient} add={() => setModal("client")} addPet={(client: Client) => { setSelectedClient(client); setModal("pet"); }} />} {view === "agenda" && <Agenda appointments={appointments} clients={clients} setModal={setModal} reload={loadWorkspace} fail={fail} shopId={shop.id} />} {view === "alerts" && <Alerts notes={notes} settings={settings} shopId={shop.id} reload={loadWorkspace} fail={fail} />} {view === "management" && isOwner && <ManagementPanel shopId={shop.id} userId={user.id} products={products} sales={sales} appointments={appointments} clients={clients} reload={loadWorkspace} fail={fail} />} </section>{modal === "product" && <ProductModal product={editing} shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "client" && <ClientModal shopId={shop.id} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "pet" && <PetModal shopId={shop.id} clients={clients} selected={selectedClient} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "appointment" && <AppointmentModal shopId={shop.id} clients={clients} close={() => setModal(null)} reload={loadWorkspace} fail={fail} />} {modal === "ticket" && selectedTicket && <TicketModal ticket={selectedTicket} shopName={shop.name} close={() => setModal(null)} />} {notice && <div className="toast"><CheckCircle2 />{notice}</div>}</main>;
 }
 
-function AuthCard({ onMagicLink, onPasswordSubmit, notice }: any) { const [mode, setMode] = useState<"password" | "email">("password"); return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>Ingresá a tu negocio.</h1><p>{mode === "password" ? "Usá el nombre de usuario y contraseña que configuraste después del primer acceso." : "El correo se usa para el primer acceso o para recuperar una cuenta."}</p><div className="mode-switch auth-switch"><button type="button" className={mode === "password" ? "selected" : ""} onClick={() => setMode("password")}>Usuario y contraseña</button><button type="button" className={mode === "email" ? "selected" : ""} onClick={() => setMode("email")}>Primer acceso por correo</button></div>{mode === "password" ? <form onSubmit={onPasswordSubmit}><label>Nombre de usuario<input name="username" autoComplete="username" pattern="[a-z0-9][a-z0-9._-]{2,31}" placeholder="mi.negocio" required /></label><label>Contraseña<input name="password" type="password" autoComplete="current-password" minLength={8} required /></label><button className="primary full">Ingresar</button></form> : <form onSubmit={onMagicLink}><label>Correo electrónico<input name="email" type="email" autoComplete="email" placeholder="nombre@negocio.com" required /></label><button className="primary full">Enviar enlace de primer acceso</button></form>}{notice && <p className="form-note">{notice}</p>}</section></main>; }
-function CredentialSetup({ onSubmit, notice }: any) { return <main className="entry"><section className="entry-card"><div className="logo-mark"><ShieldCheck /></div><p className="kicker">CONFIGURÁ TU ACCESO</p><h1>Elegí tu usuario y contraseña.</h1><p>Este paso aparece una sola vez después del enlace enviado a tu correo. Luego ingresarás sin volver a solicitar correos.</p><form onSubmit={onSubmit}><label>Nombre de usuario<input name="username" autoComplete="username" pattern="[a-z0-9][a-z0-9._-]{2,31}" minLength={3} maxLength={32} placeholder="mi.negocio" required /><small>Usá minúsculas, números, punto, guion o guion bajo.</small></label><label>Contraseña<input name="password" type="password" autoComplete="new-password" minLength={8} required /></label><label>Repetir contraseña<input name="passwordConfirmation" type="password" autoComplete="new-password" minLength={8} required /></label><button className="primary full">Guardar mi acceso</button></form>{notice && <p className="form-note">{notice}</p>}</section></main>; }
+function AuthCard({ onPasswordLogin, onRequestAccount, onRequestRecovery, initialMode, notice }: any) {
+  const [mode, setMode] = useState<AuthMode>(initialMode ?? "signin");
+  const [pending, setPending] = useState(false);
+  useEffect(() => setMode(initialMode ?? "signin"), [initialMode]);
+  const descriptions: Record<AuthMode, string> = {
+    signin: "Usá el correo o tu nombre de usuario personal y tu contraseña.",
+    signup: "Si es tu primera vez, crearás tu cuenta. Si ya entrabas con enlace, usá el mismo correo. Te enviaremos un enlace para crear tu contraseña y, si querés, un nombre de usuario único.",
+    recovery: "Ingresá el correo de tu cuenta. Te enviaremos un enlace seguro para elegir una contraseña nueva. Si todavía no configuraste ninguna, también sirve para crearla por primera vez.",
+  };
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending(true);
+    try {
+      if (mode === "signin") await onPasswordLogin(event);
+      else if (mode === "signup") await onRequestAccount(event);
+      else await onRequestRecovery(event);
+    } finally {
+      setPending(false);
+    }
+  }
+  const title = mode === "signin" ? "Ingresá a PetFlow" : mode === "signup" ? "Crear cuenta o configurar contraseña" : "Recuperá tu acceso";
+  const buttonLabel = mode === "signin" ? "Iniciar sesión" : mode === "signup" ? "Enviarme el enlace seguro" : "Enviar enlace de recuperación";
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">GESTIÓN INTELIGENTE PARA PET SHOPS</p><h1>{title}</h1><p>{descriptions[mode]}</p><form onSubmit={submit} aria-busy={pending}><label>{mode === "signin" ? "Correo o nombre de usuario" : "Correo electrónico"}<input name={mode === "signin" ? "identifier" : "email"} type={mode === "signin" ? "text" : "email"} placeholder={mode === "signin" ? "tu correo o tu usuario" : "nombre@negocio.com"} autoComplete={mode === "signin" ? "username" : "email"} required /></label>{mode === "signin" && <label>Contraseña<input name="password" type="password" autoComplete="current-password" required /></label>}<button className="primary full" disabled={pending}>{pending ? "Un momento…" : buttonLabel}</button></form><div className="auth-links">{mode === "signin" ? <><button type="button" className="auth-link" onClick={() => setMode("recovery")}>¿Olvidaste tu contraseña o nunca configuraste una?</button><button type="button" className="auth-link" onClick={() => setMode("signup")}>Crear cuenta o configurar contraseña</button></> : <button type="button" className="auth-link" onClick={() => setMode("signin")}>Volver a iniciar sesión</button>}</div>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}</section></main>;
+}
+function ConfirmLinkCard({ mode, onConfirm, onCancel, busy, notice }: any) {
+  const recovery = mode === "recovery";
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">ENLACE SEGURO</p><h1>{recovery ? "Cambiá tu contraseña" : "Confirmá tu correo"}</h1><p>{recovery ? "Tocá el botón para validar el enlace y elegir tu nueva contraseña." : "Tocá el botón para validar el enlace y crear tu contraseña."}</p><button className="primary full" onClick={onConfirm} disabled={busy}>{busy ? "Validando…" : "Continuar"}</button>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}<button type="button" className="auth-link auth-cancel" onClick={onCancel}>Volver a iniciar sesión</button></section></main>;
+}
+function PasswordSetupCard({ email, mode, onSubmit, onCancel, saving, notice }: any) {
+  const recovery = mode === "recovery";
+  return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">CUENTA PERSONAL PETFLOW</p><h1>{recovery ? "Elegí una contraseña nueva" : "Creá tu contraseña"}</h1><p>El enlace confirmó tu correo <strong>{email}</strong>. {recovery ? "Definí y confirmá tu nueva contraseña para volver a ingresar." : "Definí una contraseña para no tener que pedir un enlace en cada acceso."}</p><form onSubmit={onSubmit}><label>Nueva contraseña<input name="password" type="password" autoComplete="new-password" minLength={10} placeholder="Al menos 10 caracteres" required /></label><label>Confirmar contraseña<input name="confirmPassword" type="password" autoComplete="new-password" minLength={10} required /></label><label>Nombre de usuario personal (opcional)<input name="loginName" type="text" minLength={3} maxLength={30} pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,29}" autoComplete="username" placeholder="ej.: patitas.martinez" /></label><p className="auth-help">Debe ser único y tener 3–30 caracteres (letras, números, punto, guion o guion bajo). Podés elegir uno parecido al local; el nombre del negocio no sirve por sí solo para identificar a cada persona. Tu correo siempre sirve para recuperar el acceso.</p><button className="primary full" disabled={saving}>{saving ? "Guardando…" : recovery ? "Actualizar contraseña" : "Guardar contraseña y continuar"}</button></form>{notice && <p className="form-note" role="status" aria-live="polite">{notice}</p>}<button type="button" className="auth-link auth-cancel" onClick={onCancel}>Cerrar sesión</button></section></main>;
+}
 function ShopSetup({ onSubmit, notice }: any) { return <main className="entry"><section className="entry-card"><div className="logo-mark"><PawPrint /></div><p className="kicker">BIENVENIDO A PETFLOW</p><h1>Creá el espacio de tu pet shop.</h1><p>Tu primer usuario quedará configurado como propietario. Los datos se guardarán separados de los demás negocios.</p><form onSubmit={onSubmit}><label>Nombre del pet shop<input name="name" minLength={2} placeholder="Ej. Patitas del Sur" required /></label><button className="primary full">Crear mi pet shop</button></form>{notice && <p className="form-note">{notice}</p>}</section></main>; }
 function Summary({ products, sales, appointments, notes, setView }: any) { const today = new Date().toDateString(); const todaySales = sales.filter((sale: Sale) => new Date(sale.created_at).toDateString() === today); const low = products.filter((p: Product) => p.stock <= p.min_stock && p.active); const todayAppointments = appointments.filter((a: Appointment) => new Date(a.scheduled_at).toDateString() === today); const total = todaySales.reduce((sum: number, sale: Sale) => sum + Number(sale.total), 0); return <div className="stack"><section className="hero"><div><p className="kicker">PANEL OPERATIVO</p><h2>Las decisiones del día, a simple vista.</h2><p>Ventas, atención y reposición en una vista diseñada para avanzar rápido.</p></div><PawPrint className="hero-paw" /></section><div className="metrics"><Metric icon={<CircleDollarSign />} label="Ventas de hoy" value={formatter.format(total)} detail={`${todaySales.length} comprobantes`} /><Metric icon={<ShoppingCart />} label="Pedidos cobrados" value={todaySales.length} detail="Movimientos confirmados" /><Metric icon={<PackageSearch />} label="Stock a revisar" value={low.length} detail="Productos al mínimo" /><Metric icon={<CalendarDays />} label="Turnos de hoy" value={todayAppointments.length} detail="Servicios programados" /></div><div className="cards-grid"><Panel title="Próximos servicios" action="Abrir agenda" onAction={() => setView("agenda")}>{todayAppointments.length ? todayAppointments.slice(0, 5).map((a: Appointment) => <div className="row" key={a.id}><span className="time">{new Date(a.scheduled_at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}</span><div><strong>{a.service}</strong><small>{statusLabel(a.status)}</small></div><span className="badge">{statusLabel(a.status)}</span></div>) : <Empty icon={<CalendarDays />} text="No hay turnos para hoy." />}</Panel><Panel title="Reposición" action="Ver inventario" onAction={() => setView("inventory")}>{low.length ? low.slice(0, 5).map((p: Product) => <div className="row" key={p.id}><div><strong>{p.name}</strong><small>Mínimo: {p.min_stock} unidades</small></div><span className="danger-pill">{p.stock}</span></div>) : <Empty icon={<CheckCircle2 />} text="Todo el inventario está en orden." />}</Panel><Panel title="Últimas ventas" action="Historial" onAction={() => setView("sales")}>{sales.length ? sales.slice(0, 5).map((sale: Sale) => <div className="row" key={sale.id}><div><strong>Venta #{sale.id.slice(0, 6).toUpperCase()}</strong><small>{new Date(sale.created_at).toLocaleString("es-AR")}</small></div><strong>{formatter.format(Number(sale.total))}</strong></div>) : <Empty icon={<ReceiptText />} text="Las ventas cobradas aparecerán aquí." />}</Panel><Panel title="Alertas activas" action="Gestionar" onAction={() => setView("alerts")}>{notes.filter((note: Note) => !note.read_at).length ? notes.filter((note: Note) => !note.read_at).slice(0, 4).map((note: Note) => <div className="row" key={note.id}><Bell className="icon-muted" /><div><strong>{note.title}</strong><small>{note.content}</small></div></div>) : <Empty icon={<Bell />} text="No hay alertas pendientes." />}</Panel></div></div>; }
 function Metric({ icon, label, value, detail }: any) { return <article className="metric"><div>{icon}</div><p>{label}</p><strong>{value}</strong><small>{detail}</small></article>; }

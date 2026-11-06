@@ -34,3 +34,25 @@ Apertura/cierre persistente de caja y su conciliación, venta de monto libre, re
 ## Hallazgo de runtime durante la verificación
 
 El preview mostró pantalla en blanco porque `client/src/lib/supabase/client.ts` leía `process.env` en código del navegador. La implementación reemplaza esa lectura por `import.meta.env` y expone en Vite únicamente los prefijos públicos `VITE_` y `NEXT_PUBLIC_`, necesarios para las variables de Supabase que Netlify ya configura. No se debe usar esa configuración para variables privadas o claves de servicio.
+
+
+## Acceso persistente con email y contraseña
+
+- Mantener Supabase Auth como único gestor de credenciales; no almacenar contraseñas en tablas propias.
+- El acceso habitual será email + contraseña con `signInWithPassword`, o nombre de usuario personal único a través de una función de servidor que crea una sesión Supabase sin revelar el email.
+- El alta/configuración inicial solicita el email y envía un enlace con `signInWithOtp`. El enlace regresa a PetFlow y muestra un formulario para confirmar contraseña y opcionalmente reservar un alias único.
+- Incluir recuperación: `resetPasswordForEmail` redirige al mismo flujo seguro de creación de contraseña.
+- Con contraseña guardada, continuar el arranque actual de cuenta/negocio; no alterar membresías, tiendas ni datos operativos.
+- Implementar el formulario en `client/src/components/PetFlowApp.tsx`, el resolvedor server-side en `netlify/functions/alias-login.mts` y la migración de tabla/RPC en `supabase/migrations/0006_login_names.sql`. La URL permitida de Supabase Auth debe incluir `https://pettflow.netlify.app/`; Netlify Functions requieren `SUPABASE_SERVICE_ROLE_KEY` guardada solo como variable secreta server-side.
+- Entregar en una rama de feature y no fusionar ni desplegar a producción sin autorización.
+
+## Corrección de recuperación y activación de contraseña
+
+- Reconocer recuperación por `flow`, `type=recovery` en query/hash o el evento Supabase Auth `PASSWORD_RECOVERY`; registrar el listener antes de leer la sesión y mostrar el formulario únicamente cuando exista una sesión válida.
+- Volver al origen público de PetFlow para no depender de parámetros de query no permitidos. Clasificar enlaces por evento/tipo; aceptar callbacks PKCE `code` y fragmentos Auth.
+- Exponer “Crear o configurar contraseña” a quienes antes usaban enlaces mágicos. El enlace debe servir para cuentas existentes y nuevas, sin contraseña previa.
+- Si el enlace vence o no hay sesión, explicar el motivo y ofrecer pedir otro. No permitir actualizar contraseña sin sesión.
+- Permitir acceso con email o nombre de usuario personal único; el nombre del local puede inspirarlo, pero no se usa como credencial compartida porque no identifica a una persona. El correo personal continúa como destino de recuperación.
+- Guardar el alias en una tabla con unicidad y RLS cerrada; solo la persona autenticada puede reservarlo, y la resolución alias→email ocurre en una función server-side protegida. Nunca devolver correos desde una RPC pública ni guardar contraseñas fuera de Supabase Auth.
+- Para habilitar alias en producción se necesita aplicar `supabase/migrations/0006_login_names.sql` y configurar en Netlify la clave `SUPABASE_SERVICE_ROLE_KEY` solo para funciones (nunca `NEXT_PUBLIC_`). Hasta entonces, el acceso por email continúa disponible.
+- Supabase Auth sigue gestionando contraseñas. Cambios en rama/PR, sin nuevo deploy de producción ni cambios directos a la base hasta autorización.

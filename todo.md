@@ -11,4 +11,4 @@
 - [x] Agregar `pnpm validate:cash`, verificador no destructivo de tablas y RPC de caja.
 - [x] Validar TypeScript, pruebas y build parcial.
 - [x] Implementar acceso inicial por correo y accesos siguientes con nombre de usuario y contraseña de Supabase Auth.
-- [ ] Aplicar `0006_username_password_auth.sql` en Supabase y verificar el secreto `SUPABASE_SERVICE_ROLE_KEY` en el hosting.
+- [ ] Aplicar `0006_login_names.sql` en Supabase y verificar el secreto `SUPABASE_SERVICE_ROLE_KEY` en el hosting.
