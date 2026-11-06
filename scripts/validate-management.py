@@ -6,6 +6,8 @@ diagnostics_migration = Path(__file__).parents[1] / "supabase" / "migrations" / 
 diagnostics_text = diagnostics_migration.read_text(encoding="utf-8")
 cash_migration = Path(__file__).parents[1] / "supabase" / "migrations" / "0005_cash_registers.sql"
 cash_text = cash_migration.read_text(encoding="utf-8")
+auth_migration = Path(__file__).parents[1] / "supabase" / "migrations" / "0006_username_password_auth.sql"
+auth_text = auth_migration.read_text(encoding="utf-8")
 required = [
     "pet_shop_memberships",
     "permissions jsonb",
@@ -36,3 +38,8 @@ cash_missing = [fragment for fragment in cash_required if fragment not in cash_t
 if cash_missing:
     raise SystemExit("Faltan fragmentos de caja: " + ", ".join(cash_missing))
 print(f"Migración de caja válida: {len(cash_required)} controles encontrados.")
+auth_required = ["user_login_profiles", "username_format", "username_lower_idx", "enable row level security", "user_login_profiles_self_read"]
+auth_missing = [fragment for fragment in auth_required if fragment not in auth_text]
+if auth_missing:
+    raise SystemExit("Faltan fragmentos de credenciales: " + ", ".join(auth_missing))
+print(f"Migración de acceso por usuario válida: {len(auth_required)} controles encontrados.")

@@ -27,13 +27,21 @@ En Supabase, en **Authentication → URL Configuration**:
 
 El dominio debe ser el dominio real de la aplicación publicada, no el dominio de Supabase ni `localhost`.
 
+## Acceso por usuario y contraseña
+
+La migración `0006_username_password_auth.sql` agrega el perfil privado `user_login_profiles`. El correo mágico se conserva únicamente como primer acceso o recuperación: al abrirlo, PetFlow muestra una pantalla para elegir un nombre de usuario y una contraseña de al menos 8 caracteres. Después, el usuario entra desde la pestaña **Usuario y contraseña** sin volver a solicitar un correo.
+
+El nombre se normaliza a minúsculas y debe tener entre 3 y 32 caracteres. Las contraseñas las administra Supabase Auth; PetFlow no las guarda en tablas propias ni las envía por correo. El endpoint server-side sólo usa `SUPABASE_SERVICE_ROLE_KEY` para vincular el nombre con el usuario Auth y nunca expone esa clave al navegador.
+
+Para activar esta modalidad, aplicar `supabase/migrations/0006_username_password_auth.sql` en el SQL Editor de Supabase y configurar `SUPABASE_SERVICE_ROLE_KEY` como secreto del hosting. Las cuentas que ya usaban enlace mágico podrán definir sus credenciales la próxima vez que entren.
+
 ## Acceso recomendado para cada negocio
 
 Para un sistema multi-negocio, la opción recomendada es:
 
 1. El administrador crea la cuenta del responsable con su correo y el negocio al que pertenece.
-2. El servidor usa una invitación de Supabase de un solo uso.
-3. El responsable abre el enlace, establece su propia contraseña y queda asociado al negocio mediante `pet_shop_memberships`.
+2. El responsable abre el enlace de primer acceso una sola vez y establece usuario y contraseña.
+3. En los accesos siguientes usa esas credenciales; la sesión sigue siendo emitida por Supabase Auth.
 4. Las políticas RLS continúan aislando los datos por `pet_shop_id`.
 
 No se deben enviar contraseñas permanentes por correo. Si se necesita entregar una contraseña temporal por compatibilidad, debe ser aleatoria, de un solo uso, con vencimiento y con cambio obligatorio en el primer acceso; aun así, el enlace de invitación es más seguro.
@@ -46,9 +54,9 @@ No se deben enviar contraseñas permanentes por correo. Si se necesita entregar 
 
 La primera opción es la más simple. La segunda es la mejor si cada negocio necesita cuentas administradas y acceso con contraseña. El envío programado de correos no es necesario para el alta: Supabase puede enviar la invitación en el momento de crear el usuario. Sólo conviene programar recordatorios o reenvíos controlados, no repetir contraseñas.
 
-## Flujo que falta para habilitar invitaciones administrativas
+## Flujo futuro de invitaciones administrativas
 
-El archivo recibido contiene el panel operativo y el inicio de sesión por enlace mágico, pero no contiene una migración Supabase ni una ruta servidor para crear usuarios. Para implementar invitaciones completas se debe agregar, en una siguiente iteración:
+La creación administrativa de usuarios y el envío de invitaciones masivas todavía es una iteración separada. Para incorporarla se debe agregar:
 
 - un rol administrativo y una pantalla para crear/invitar responsables;
 - una ruta de servidor protegida que use `SUPABASE_SERVICE_ROLE_KEY` sólo en el servidor;

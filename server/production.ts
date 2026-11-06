@@ -2,6 +2,7 @@ import express from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createSystemDiagnosticsHandler } from "./scheduled/systemDiagnostics";
+import { registerCredentialRoutes } from "./auth/credentials";
 
 const app = express();
 const port = Number(process.env.PORT ?? 3000);
@@ -10,6 +11,7 @@ const publicDir = path.join(path.dirname(currentFile), "public");
 
 app.disable("x-powered-by");
 app.use(express.json({ limit: "32kb" }));
+registerCredentialRoutes(app);
 app.post("/api/scheduled/system-diagnostics", createSystemDiagnosticsHandler(publicDir));
 app.use(express.static(publicDir, { index: "index.html" }));
 

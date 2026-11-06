@@ -10,3 +10,5 @@
 - [ ] Verificar técnicamente en Supabase que la migración `0005_cash_registers.sql` está aplicada; el usuario la confirmó, pero esta sesión no tiene una clave server-side para comprobarlo.
 - [x] Agregar `pnpm validate:cash`, verificador no destructivo de tablas y RPC de caja.
 - [x] Validar TypeScript, pruebas y build parcial.
+- [x] Implementar acceso inicial por correo y accesos siguientes con nombre de usuario y contraseña de Supabase Auth.
+- [ ] Aplicar `0006_username_password_auth.sql` en Supabase y verificar el secreto `SUPABASE_SERVICE_ROLE_KEY` en el hosting.
