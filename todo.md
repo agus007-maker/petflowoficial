@@ -7,8 +7,9 @@
 - [x] Implementar endpoint de diagnóstico automático protegido por cron, con notificación al propietario y pruebas no destructivas.
 - [x] Activar Heartbeat diario sobre la URL publicada; las alertas se entregan por el canal del propietario. El correo SMTP/transaccional personal queda como integración opcional pendiente de proveedor.
 - [x] Implementar Mi caja: apertura, ingresos, retiros, efectivo esperado y cierre con diferencia.
-- [ ] Verificar técnicamente en Supabase que la migración `0005_cash_registers.sql` está aplicada; el usuario la confirmó, pero esta sesión no tiene una clave server-side para comprobarlo.
+- [x] Verificar técnicamente en Supabase que las tablas reales de caja (`cash_registers`, `cash_sessions`, `cash_movements`) están aplicadas y protegidas con RLS.
 - [x] Agregar `pnpm validate:cash`, verificador no destructivo de tablas y RPC de caja.
 - [x] Validar TypeScript, pruebas y build parcial.
 - [x] Implementar acceso inicial por correo y accesos siguientes con nombre de usuario y contraseña de Supabase Auth.
-- [ ] Aplicar `0006_login_names.sql` en Supabase y verificar el secreto `SUPABASE_SERVICE_ROLE_KEY` en el hosting.
+- [x] Aplicar `0006_login_names.sql` en Supabase y configurar/verificar el secreto server-side `SUPABASE_SERVICE_ROLE_KEY`.
+- [ ] Resolver la alerta crítica de Supabase en `public.products`: activar RLS sólo después de definir y revisar sus políticas por negocio.
