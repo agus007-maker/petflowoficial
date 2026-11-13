@@ -12,4 +12,4 @@
 - [x] Validar TypeScript, pruebas y build parcial.
 - [x] Implementar acceso inicial por correo y accesos siguientes con nombre de usuario y contraseña de Supabase Auth.
 - [x] Aplicar `0006_login_names.sql` en Supabase y configurar/verificar el secreto server-side `SUPABASE_SERVICE_ROLE_KEY`.
-- [ ] Resolver la alerta crítica de Supabase en `public.products`: activar RLS sólo después de definir y revisar sus políticas por negocio.
+- [x] Resolver la alerta crítica de Supabase en `public.products`: RLS activo con políticas de lectura y escritura por membresía del negocio.
