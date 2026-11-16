@@ -1,155 +1,176 @@
 import {
   boolean,
-  decimal,
-  index,
-  int,
-  mysqlEnum,
-  mysqlTable,
+  integer,
+  numeric,
+  pgEnum,
+  pgTable,
+  serial,
   text,
   timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mysql-core";
+  index,
+} from "drizzle-orm/pg-core";
 
 /** Core identity table managed by the Manus OAuth flow. */
-export const users = mysqlTable("users", {
-  id: int("id").autoincrement().primaryKey(),
-  openId: varchar("openId", { length: 64 }).notNull().unique(),
-  name: text("name"),
-  email: varchar("email", { length: 320 }),
-  loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
-  createdAt: timestamp("createdAt").defaultNow().notNull(),
-  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
-});
+export const userRole = pgEnum("petflow_user_role", ["user", "admin"]);
+export const paymentMethod = pgEnum("petflow_payment_method", ["cash", "card", "transfer", "other"]);
+export const appointmentStatus = pgEnum("petflow_appointment_status", [
+  "scheduled",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "cancelled",
+  "no_show",
+]);
+export const notificationType = pgEnum("petflow_notification_type", [
+  "appointment_reminder",
+  "appointment_status",
+  "stock_alert",
+]);
 
-export const products = mysqlTable(
-  "products",
+export const users = pgTable(
+  "petflow_users",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    id: serial("id").primaryKey(),
+    openId: varchar("openId", { length: 64 }).notNull().unique(),
+    name: text("name"),
+    email: varchar("email", { length: 320 }),
+    loginMethod: varchar("loginMethod", { length: 64 }),
+    role: userRole("role").default("user").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+    lastSignedIn: timestamp("lastSignedIn", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [index("petflow_users_open_id_idx").on(table.openId)],
+);
+
+export const products = pgTable(
+  "petflow_products",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 160 }).notNull(),
     sku: varchar("sku", { length: 80 }),
     category: varchar("category", { length: 48 }).notNull(),
-    stock: int("stock").notNull().default(0),
-    minStock: int("minStock").notNull().default(3),
-    costPrice: decimal("costPrice", { precision: 12, scale: 2 }).notNull().default("0"),
-    salePrice: decimal("salePrice", { precision: 12, scale: 2 }).notNull(),
+    stock: integer("stock").notNull().default(0),
+    minStock: integer("minStock").notNull().default(3),
+    costPrice: numeric("costPrice", { precision: 12, scale: 2 }).notNull().default("0"),
+    salePrice: numeric("salePrice", { precision: 12, scale: 2 }).notNull(),
     active: boolean("active").notNull().default(true),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
   },
-  table => [index("products_owner_idx").on(table.ownerUserId), index("products_owner_category_idx").on(table.ownerUserId, table.category)]
+  table => [index("petflow_products_owner_idx").on(table.ownerUserId), index("petflow_products_owner_category_idx").on(table.ownerUserId, table.category)],
 );
 
-export const clients = mysqlTable(
-  "clients",
+export const clients = pgTable(
+  "petflow_clients",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
     fullName: varchar("fullName", { length: 160 }).notNull(),
     phone: varchar("phone", { length: 48 }),
     email: varchar("email", { length: 320 }),
     notes: text("notes"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
   },
-  table => [index("clients_owner_idx").on(table.ownerUserId), index("clients_owner_name_idx").on(table.ownerUserId, table.fullName)]
+  table => [index("petflow_clients_owner_idx").on(table.ownerUserId), index("petflow_clients_owner_name_idx").on(table.ownerUserId, table.fullName)],
 );
 
-export const pets = mysqlTable(
-  "pets",
+export const pets = pgTable(
+  "petflow_pets",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: integer("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 100 }).notNull(),
     species: varchar("species", { length: 40 }).notNull(),
     breed: varchar("breed", { length: 100 }),
     notes: text("notes"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
   },
-  table => [index("pets_owner_idx").on(table.ownerUserId), index("pets_client_idx").on(table.clientId)]
+  table => [index("petflow_pets_owner_idx").on(table.ownerUserId), index("petflow_pets_client_idx").on(table.clientId)],
 );
 
-export const sales = mysqlTable(
-  "sales",
+export const sales = pgTable(
+  "petflow_sales",
   {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    clientId: int("clientId").references(() => clients.id, { onDelete: "set null" }),
-    paymentMethod: mysqlEnum("paymentMethod", ["cash", "card", "transfer", "other"]).notNull(),
-    total: decimal("total", { precision: 12, scale: 2 }).notNull(),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: integer("clientId").references(() => clients.id, { onDelete: "set null" }),
+    paymentMethod: paymentMethod("paymentMethod").notNull(),
+    total: numeric("total", { precision: 12, scale: 2 }).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
   },
-  table => [index("sales_owner_created_idx").on(table.ownerUserId, table.createdAt), index("sales_client_idx").on(table.clientId)]
+  table => [index("petflow_sales_owner_created_idx").on(table.ownerUserId, table.createdAt), index("petflow_sales_client_idx").on(table.clientId)],
 );
 
-export const saleItems = mysqlTable(
-  "saleItems",
+export const saleItems = pgTable(
+  "petflow_sale_items",
   {
-    id: int("id").autoincrement().primaryKey(),
-    saleId: int("saleId").notNull().references(() => sales.id, { onDelete: "cascade" }),
-    productId: int("productId").references(() => products.id, { onDelete: "set null" }),
+    id: serial("id").primaryKey(),
+    saleId: integer("saleId").notNull().references(() => sales.id, { onDelete: "cascade" }),
+    productId: integer("productId").references(() => products.id, { onDelete: "set null" }),
     productName: varchar("productName", { length: 160 }).notNull(),
-    unitPrice: decimal("unitPrice", { precision: 12, scale: 2 }).notNull(),
-    quantity: int("quantity").notNull(),
-    lineTotal: decimal("lineTotal", { precision: 12, scale: 2 }).notNull(),
+    unitPrice: numeric("unitPrice", { precision: 12, scale: 2 }).notNull(),
+    quantity: integer("quantity").notNull(),
+    lineTotal: numeric("lineTotal", { precision: 12, scale: 2 }).notNull(),
   },
-  table => [index("sale_items_sale_idx").on(table.saleId)]
+  table => [index("petflow_sale_items_sale_idx").on(table.saleId)],
+);
+
+export const appointments = pgTable(
+  "petflow_appointments",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    clientId: integer("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    petId: integer("petId").notNull().references(() => pets.id, { onDelete: "cascade" }),
+    service: varchar("service", { length: 100 }).notNull(),
+    scheduledAt: timestamp("scheduledAt", { withTimezone: true }).notNull(),
+    durationMinutes: integer("durationMinutes").notNull().default(60),
+    status: appointmentStatus("status").notNull().default("scheduled"),
+    notes: text("notes"),
+    reminderSentAt: timestamp("reminderSentAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [index("petflow_appointments_owner_date_idx").on(table.ownerUserId, table.scheduledAt), index("petflow_appointments_reminder_idx").on(table.ownerUserId, table.reminderSentAt)],
+);
+
+export const notificationSettings = pgTable(
+  "petflow_notification_settings",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    remindersEnabled: boolean("remindersEnabled").notNull().default(true),
+    reminderLeadMinutes: integer("reminderLeadMinutes").notNull().default(60),
+    scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [uniqueIndex("petflow_notification_settings_owner_unique").on(table.ownerUserId), index("petflow_notification_settings_task_idx").on(table.scheduleCronTaskUid)],
+);
+
+export const notifications = pgTable(
+  "petflow_notifications",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    appointmentId: integer("appointmentId").references(() => appointments.id, { onDelete: "set null" }),
+    type: notificationType("type").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    content: text("content").notNull(),
+    readAt: timestamp("readAt", { withTimezone: true }),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [index("petflow_notifications_owner_created_idx").on(table.ownerUserId, table.createdAt)],
 );
 
 export const appointmentStatusValues = ["scheduled", "confirmed", "in_progress", "completed", "cancelled", "no_show"] as const;
-
-export const appointments = mysqlTable(
-  "appointments",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    clientId: int("clientId").notNull().references(() => clients.id, { onDelete: "cascade" }),
-    petId: int("petId").notNull().references(() => pets.id, { onDelete: "cascade" }),
-    service: varchar("service", { length: 100 }).notNull(),
-    scheduledAt: timestamp("scheduledAt").notNull(),
-    durationMinutes: int("durationMinutes").notNull().default(60),
-    status: mysqlEnum("status", appointmentStatusValues).notNull().default("scheduled"),
-    notes: text("notes"),
-    reminderSentAt: timestamp("reminderSentAt"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  },
-  table => [index("appointments_owner_date_idx").on(table.ownerUserId, table.scheduledAt), index("appointments_reminder_idx").on(table.ownerUserId, table.reminderSentAt)]
-);
-
-export const notificationSettings = mysqlTable(
-  "notificationSettings",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    remindersEnabled: boolean("remindersEnabled").notNull().default(true),
-    reminderLeadMinutes: int("reminderLeadMinutes").notNull().default(60),
-    scheduleCronTaskUid: varchar("scheduleCronTaskUid", { length: 65 }),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-  },
-  table => [uniqueIndex("notification_settings_owner_unique").on(table.ownerUserId), index("notification_settings_task_idx").on(table.scheduleCronTaskUid)]
-);
-
-export const notifications = mysqlTable(
-  "notifications",
-  {
-    id: int("id").autoincrement().primaryKey(),
-    ownerUserId: int("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
-    appointmentId: int("appointmentId").references(() => appointments.id, { onDelete: "set null" }),
-    type: mysqlEnum("type", ["appointment_reminder", "appointment_status", "stock_alert"]).notNull(),
-    title: varchar("title", { length: 180 }).notNull(),
-    content: text("content").notNull(),
-    readAt: timestamp("readAt"),
-    createdAt: timestamp("createdAt").defaultNow().notNull(),
-  },
-  table => [index("notifications_owner_created_idx").on(table.ownerUserId, table.createdAt)]
-);
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;

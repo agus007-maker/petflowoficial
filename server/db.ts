@@ -1,5 +1,6 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
+import { and, asc, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { TRPCError } from "@trpc/server";
 import {
   appointments,
@@ -17,14 +18,20 @@ import {
 import { ENV } from "./_core/env";
 import { buildSaleLines, petBelongsToClient, PetShopRuleError } from "./petshopRules";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+type AppDb = ReturnType<typeof drizzle>;
+let _sql: ReturnType<typeof postgres> | null = null;
+let _db: AppDb | null = null;
 
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  const connectionString = ENV.supabaseDatabaseUrl || ENV.databaseUrl;
+  if (!_db && connectionString) {
     try {
-      _db = drizzle(process.env.DATABASE_URL);
+      // Supabase's pooler is compatible with postgres-js when prepared statements are disabled.
+      _sql = postgres(connectionString, { prepare: false, max: 5, connect_timeout: 10, idle_timeout: 20 });
+      _db = drizzle(_sql);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
+      _sql = null;
       _db = null;
     }
   }
@@ -39,13 +46,21 @@ async function requireDb() {
   return db;
 }
 
+export async function closeDb() {
+  if (_sql) {
+    await _sql.end({ timeout: 5 });
+    _sql = null;
+    _db = null;
+  }
+}
+
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) throw new Error("User openId is required for upsert");
   const db = await getDb();
   if (!db) return;
 
   const values: InsertUser = { openId: user.openId, lastSignedIn: user.lastSignedIn ?? new Date() };
-  const updateSet: Record<string, unknown> = { lastSignedIn: values.lastSignedIn };
+  const updateSet: Record<string, unknown> = { lastSignedIn: values.lastSignedIn, updatedAt: new Date() };
   for (const field of ["name", "email", "loginMethod"] as const) {
     if (user[field] !== undefined) {
       values[field] = user[field] ?? null;
@@ -59,10 +74,10 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     values.role = "admin";
     updateSet.role = "admin";
   }
-  await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+  await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
 }
 
-export async function getUserByOpenId(openId: string) {
+export async function getUserByOpenId(openId: string): Promise<User | undefined> {
   const db = await getDb();
   if (!db) return undefined;
   return (await db.select().from(users).where(eq(users.openId, openId)).limit(1))[0];
@@ -95,7 +110,7 @@ export async function changeProductStock(ownerUserId: number, productId: number,
   if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Producto no encontrado." });
   const nextStock = product.stock + adjustment;
   if (nextStock < 0) throw new TRPCError({ code: "BAD_REQUEST", message: "El stock no puede ser negativo." });
-  await db.update(products).set({ stock: nextStock }).where(eq(products.id, productId));
+  await db.update(products).set({ stock: nextStock, updatedAt: new Date() }).where(eq(products.id, productId));
   return nextStock;
 }
 
@@ -108,8 +123,8 @@ export async function listClients(ownerUserId: number) {
 
 export async function createClient(ownerUserId: number, input: { fullName: string; phone?: string | null; email?: string | null; notes?: string | null }) {
   const db = await requireDb();
-  const result = await db.insert(clients).values({ ownerUserId, ...input, phone: input.phone || null, email: input.email || null, notes: input.notes || null });
-  return Number((result as unknown as { insertId: number }).insertId ?? (result as unknown as [{ insertId: number }])[0]?.insertId);
+  const [client] = await db.insert(clients).values({ ownerUserId, ...input, phone: input.phone || null, email: input.email || null, notes: input.notes || null }).returning({ id: clients.id });
+  return client.id;
 }
 
 export async function addPet(ownerUserId: number, input: { clientId: number; name: string; species: string; breed?: string | null; notes?: string | null }) {
@@ -170,7 +185,7 @@ export async function getAppointment(ownerUserId: number, appointmentId: number)
 
 export async function updateAppointmentStatus(ownerUserId: number, appointmentId: number, status: typeof appointments.$inferInsert.status) {
   const db = await requireDb();
-  await db.update(appointments).set({ status }).where(and(eq(appointments.id, appointmentId), eq(appointments.ownerUserId, ownerUserId)));
+  await db.update(appointments).set({ status, updatedAt: new Date() }).where(and(eq(appointments.id, appointmentId), eq(appointments.ownerUserId, ownerUserId)));
 }
 
 export async function createSale(ownerUserId: number, input: { clientId?: number | null; paymentMethod: "cash" | "card" | "transfer" | "other"; items: { productId: number; quantity: number }[] }) {
@@ -191,14 +206,13 @@ export async function createSale(ownerUserId: number, input: { clientId?: number
       throw error;
     }
     const { lines, total } = preparedSale;
-    const saleResult = await tx.insert(sales).values({ ownerUserId, clientId: input.clientId || null, paymentMethod: input.paymentMethod, total: total.toFixed(2) });
-    const saleId = Number((saleResult as unknown as { insertId: number }).insertId ?? (saleResult as unknown as [{ insertId: number }])[0]?.insertId);
-    if (!saleId) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo registrar la venta." });
-    await tx.insert(saleItems).values(lines.map(line => ({ saleId, productId: line.product.id, productName: line.product.name, unitPrice: line.unitPrice.toFixed(2), quantity: line.quantity, lineTotal: line.lineTotal.toFixed(2) })));
+    const [sale] = await tx.insert(sales).values({ ownerUserId, clientId: input.clientId || null, paymentMethod: input.paymentMethod, total: total.toFixed(2) }).returning({ id: sales.id });
+    if (!sale?.id) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo registrar la venta." });
+    await tx.insert(saleItems).values(lines.map(line => ({ saleId: sale.id, productId: line.product.id, productName: line.product.name, unitPrice: line.unitPrice.toFixed(2), quantity: line.quantity, lineTotal: line.lineTotal.toFixed(2) })));
     for (const line of lines) {
-      await tx.update(products).set({ stock: line.product.stock - line.quantity }).where(and(eq(products.id, line.product.id), eq(products.ownerUserId, ownerUserId)));
+      await tx.update(products).set({ stock: line.product.stock - line.quantity, updatedAt: new Date() }).where(and(eq(products.id, line.product.id), eq(products.ownerUserId, ownerUserId)));
     }
-    return { saleId, total };
+    return { saleId: sale.id, total };
   });
 }
 
@@ -247,23 +261,21 @@ export async function recordNotification(ownerUserId: number, input: { appointme
 
 export async function getNotificationSettings(ownerUserId: number) {
   const db = await requireDb();
-  const existing = (await db.select().from(notificationSettings).where(eq(notificationSettings.ownerUserId, ownerUserId)).limit(1))[0];
-  if (existing) return existing;
-  await db.insert(notificationSettings).values({ ownerUserId });
+  await db.insert(notificationSettings).values({ ownerUserId }).onConflictDoNothing({ target: notificationSettings.ownerUserId });
   return (await db.select().from(notificationSettings).where(eq(notificationSettings.ownerUserId, ownerUserId)).limit(1))[0]!;
 }
 
 export async function saveNotificationSettings(ownerUserId: number, input: { remindersEnabled: boolean; reminderLeadMinutes: number }) {
   const db = await requireDb();
   await getNotificationSettings(ownerUserId);
-  await db.update(notificationSettings).set(input).where(eq(notificationSettings.ownerUserId, ownerUserId));
+  await db.update(notificationSettings).set({ ...input, updatedAt: new Date() }).where(eq(notificationSettings.ownerUserId, ownerUserId));
   return getNotificationSettings(ownerUserId);
 }
 
 export async function saveScheduleTaskUid(ownerUserId: number, taskUid: string) {
   const db = await requireDb();
   await getNotificationSettings(ownerUserId);
-  await db.update(notificationSettings).set({ scheduleCronTaskUid: taskUid }).where(eq(notificationSettings.ownerUserId, ownerUserId));
+  await db.update(notificationSettings).set({ scheduleCronTaskUid: taskUid, updatedAt: new Date() }).where(eq(notificationSettings.ownerUserId, ownerUserId));
 }
 
 export async function getSettingsByTaskUid(taskUid: string) {
@@ -282,5 +294,5 @@ export async function findReminderCandidates(ownerUserId: number, leadMinutes: n
 
 export async function markReminderSent(ownerUserId: number, appointmentId: number, at: Date) {
   const db = await requireDb();
-  await db.update(appointments).set({ reminderSentAt: at }).where(and(eq(appointments.id, appointmentId), eq(appointments.ownerUserId, ownerUserId), isNull(appointments.reminderSentAt)));
+  await db.update(appointments).set({ reminderSentAt: at, updatedAt: new Date() }).where(and(eq(appointments.id, appointmentId), eq(appointments.ownerUserId, ownerUserId), isNull(appointments.reminderSentAt)));
 }

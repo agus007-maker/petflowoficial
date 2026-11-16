@@ -22,3 +22,7 @@
 
 - [x] Preparar guía para dominio personalizado y despliegue externo en Vercel o Netlify.
 - [x] Documentar dependencias de hosting, autenticación, base de datos y avisos automáticos para una migración externa.
+- [x] Adaptar el esquema y la capa de acceso de datos a PostgreSQL de Supabase con tablas `petflow_` namespaced.
+- [x] Generar, revisar y aplicar la migración PostgreSQL sin modificar la tabla preexistente `products`.
+- [x] Verificar Dashboard, Inventario, Clientes, Agenda, Alertas y el lookup del callback de Heartbeat contra Supabase.
+- [x] Documentar configuración de secretos, operación y plan de migración de datos históricos.
