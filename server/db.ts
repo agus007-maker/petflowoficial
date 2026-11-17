@@ -8,6 +8,8 @@ import {
   type InsertUser,
   notificationSettings,
   notifications,
+  membershipPermissions,
+  shopMemberships,
   pets,
   products,
   saleItems,
@@ -295,4 +297,96 @@ export async function findReminderCandidates(ownerUserId: number, leadMinutes: n
 export async function markReminderSent(ownerUserId: number, appointmentId: number, at: Date) {
   const db = await requireDb();
   await db.update(appointments).set({ reminderSentAt: at, updatedAt: new Date() }).where(and(eq(appointments.id, appointmentId), eq(appointments.ownerUserId, ownerUserId), isNull(appointments.reminderSentAt)));
+}
+
+
+export async function getShopOwnerUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return userId;
+  const membership = (await db.select({ ownerUserId: shopMemberships.ownerUserId })
+    .from(shopMemberships)
+    .where(and(eq(shopMemberships.userId, userId), eq(shopMemberships.status, "active")))
+    .orderBy(asc(shopMemberships.id))
+    .limit(1))[0];
+  return membership?.ownerUserId ?? userId;
+}
+
+export async function hasPermission(userId: number, ownerUserId: number, permission: string) {
+  if (userId === ownerUserId) return true;
+  const db = await requireDb();
+  const row = (await db.select({ enabled: membershipPermissions.enabled })
+    .from(shopMemberships)
+    .innerJoin(membershipPermissions, eq(membershipPermissions.membershipId, shopMemberships.id))
+    .where(and(
+      eq(shopMemberships.ownerUserId, ownerUserId),
+      eq(shopMemberships.userId, userId),
+      eq(shopMemberships.status, "active"),
+      eq(membershipPermissions.permission, permission),
+      eq(membershipPermissions.enabled, true),
+    ))
+    .limit(1))[0];
+  return Boolean(row?.enabled);
+}
+
+export async function listShopMembers(ownerUserId: number) {
+  const db = await requireDb();
+  return db.select({
+    membership: shopMemberships,
+    user: { id: users.id, name: users.name, email: users.email, openId: users.openId },
+  }).from(shopMemberships)
+    .innerJoin(users, eq(users.id, shopMemberships.userId))
+    .where(eq(shopMemberships.ownerUserId, ownerUserId))
+    .orderBy(asc(shopMemberships.createdAt));
+}
+
+export async function listAvailableUsers(ownerUserId: number) {
+  const db = await requireDb();
+  const members = await db.select({ userId: shopMemberships.userId }).from(shopMemberships).where(eq(shopMemberships.ownerUserId, ownerUserId));
+  const memberIds = members.map(row => row.userId);
+  const rows = await db.select({ id: users.id, name: users.name, email: users.email, openId: users.openId }).from(users).orderBy(asc(users.name));
+  return rows.filter(row => row.id !== ownerUserId && !memberIds.includes(row.id));
+}
+
+export async function getMemberPermissions(ownerUserId: number, membershipId: number) {
+  const db = await requireDb();
+  return db.select({ permission: membershipPermissions.permission, enabled: membershipPermissions.enabled })
+    .from(membershipPermissions)
+    .innerJoin(shopMemberships, eq(shopMemberships.id, membershipPermissions.membershipId))
+    .where(and(eq(membershipPermissions.membershipId, membershipId), eq(shopMemberships.ownerUserId, ownerUserId)));
+}
+
+export async function saveShopMember(ownerUserId: number, input: {
+  userId: number;
+  role: "owner" | "manager" | "cashier" | "assistant" | "viewer";
+  permissions: { permission: string; enabled: boolean }[];
+}) {
+  if (ownerUserId === input.userId) throw new TRPCError({ code: "BAD_REQUEST", message: "El propietario no necesita una membresía adicional." });
+  const db = await requireDb();
+  const [membership] = await db.insert(shopMemberships).values({
+    ownerUserId,
+    userId: input.userId,
+    role: input.role,
+    status: "active",
+    updatedAt: new Date(),
+  }).onConflictDoUpdate({
+    target: [shopMemberships.ownerUserId, shopMemberships.userId],
+    set: { role: input.role, status: "active", updatedAt: new Date() },
+  }).returning({ id: shopMemberships.id });
+  if (!membership) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "No se pudo guardar el miembro." });
+  await db.delete(membershipPermissions).where(eq(membershipPermissions.membershipId, membership.id));
+  if (input.permissions.length) {
+    await db.insert(membershipPermissions).values(input.permissions.map(item => ({
+      membershipId: membership.id,
+      permission: item.permission,
+      enabled: item.enabled,
+      updatedAt: new Date(),
+    })));
+  }
+  return membership.id;
+}
+
+export async function suspendShopMember(ownerUserId: number, membershipId: number) {
+  const db = await requireDb();
+  await db.update(shopMemberships).set({ status: "suspended", updatedAt: new Date() })
+    .where(and(eq(shopMemberships.id, membershipId), eq(shopMemberships.ownerUserId, ownerUserId)));
 }

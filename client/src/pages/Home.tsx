@@ -22,15 +22,17 @@ import {
   Plus,
   Search,
   ShoppingBag,
+  SlidersHorizontal,
   Sparkles,
   TriangleAlert,
   Users,
   X,
 } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import Administration from "@/pages/Administration";
 
-type Section = "dashboard" | "inventory" | "pos" | "clients" | "agenda" | "alerts" | "guide";
+type Section = "dashboard" | "inventory" | "pos" | "clients" | "agenda" | "alerts" | "guide" | "administration";
 type CartLine = { id: number; name: string; price: number; stock: number; quantity: number };
 
 const navigation: DashboardNavItem[] = [
@@ -56,11 +58,15 @@ const dateForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneO
 const datetimeForInput = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
 export default function Home() {
+  const { user } = useAuth();
   const [section, setSection] = useState<Section>(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
-    return navigation.some(item => item.id === requested) ? requested as Section : "dashboard";
+    return [...navigation, { id: "administration" }].some(item => item.id === requested) ? requested as Section : "dashboard";
   });
-  return <DashboardLayout items={navigation} activeId={section} onNavigate={id => setSection(id as Section)}><Workspace section={section} setSection={setSection} /></DashboardLayout>;
+  useEffect(() => {
+    if (section === "administration" && user?.role !== "admin") setSection("dashboard");
+  }, [section, user?.role]);
+  return <DashboardLayout items={navigation} administrationItem={user?.role === "admin" ? { id: "administration", label: "Administración", icon: SlidersHorizontal } : undefined} activeId={section} onNavigate={id => setSection(id as Section)}><Workspace section={section} setSection={setSection} /></DashboardLayout>;
 }
 
 function Workspace({ section, setSection }: { section: Section; setSection: (section: Section) => void }) {
@@ -75,13 +81,13 @@ function Workspace({ section, setSection }: { section: Section; setSection: (sec
   const [modal, setModal] = useState<"product" | "client" | "pet" | "appointment" | null>(null);
   const [clientId, setClientId] = useState<number | null>(null);
 
-  const dashboardQuery = trpc.petshop.dashboard.useQuery(undefined, { enabled: Boolean(user) });
-  const productsQuery = trpc.petshop.products.list.useQuery(undefined, { enabled: Boolean(user) });
-  const clientsQuery = trpc.petshop.clients.list.useQuery(undefined, { enabled: Boolean(user) });
-  const appointmentsQuery = trpc.petshop.appointments.list.useQuery({ day }, { enabled: Boolean(user) });
-  const notificationsQuery = trpc.petshop.notifications.list.useQuery(undefined, { enabled: Boolean(user) });
-  const settingsQuery = trpc.petshop.notifications.settings.useQuery(undefined, { enabled: Boolean(user) });
-  const detailQuery = trpc.petshop.clients.detail.useQuery({ id: clientId ?? 0 }, { enabled: clientId !== null });
+  const dashboardQuery = trpc.petshop.dashboard.useQuery(undefined, { enabled: Boolean(user) && section !== "administration" });
+  const productsQuery = trpc.petshop.products.list.useQuery(undefined, { enabled: Boolean(user) && section !== "administration" });
+  const clientsQuery = trpc.petshop.clients.list.useQuery(undefined, { enabled: Boolean(user) && section !== "administration" });
+  const appointmentsQuery = trpc.petshop.appointments.list.useQuery({ day }, { enabled: Boolean(user) && section !== "administration" });
+  const notificationsQuery = trpc.petshop.notifications.list.useQuery(undefined, { enabled: Boolean(user) && section !== "administration" });
+  const settingsQuery = trpc.petshop.notifications.settings.useQuery(undefined, { enabled: Boolean(user) && section !== "administration" });
+  const detailQuery = trpc.petshop.clients.detail.useQuery({ id: clientId ?? 0 }, { enabled: clientId !== null && section !== "administration" });
 
   const invalidate = () => {
     void utils.petshop.dashboard.invalidate();
@@ -120,6 +126,8 @@ function Workspace({ section, setSection }: { section: Section; setSection: (sec
   };
   const changeQty = (id: number, quantity: number) => setCart(current => current.flatMap(line => quantity <= 0 ? [] : line.id === id ? [{ ...line, quantity: Math.min(quantity, line.stock) }] : [line]));
 
+  if (section === "administration") return <div className="mx-auto max-w-[1500px]"><Administration /></div>;
+
   return <div className="mx-auto max-w-[1500px]">
     <header className="mb-7 flex flex-col gap-4 border-b border-[#ded8c8] pb-6 md:flex-row md:items-end md:justify-between">
       <div><p className="eyebrow mb-2">OPERACIONES · {new Date().toLocaleDateString("es-AR", { weekday: "long", day: "numeric", month: "long" })}</p><h1 className="font-display text-3xl font-semibold tracking-tight text-[#153f35] sm:text-4xl">{section === "dashboard" ? `Buen día, ${user?.name?.split(" ")[0] || "responsable"}.` : navigation.find(item => item.id === section)?.label}</h1><p className="mt-2 max-w-xl text-sm leading-6 text-[#6c766f]">{subtitle(section)}</p></div>
@@ -139,7 +147,7 @@ function Workspace({ section, setSection }: { section: Section; setSection: (sec
   </div>;
 }
 
-function subtitle(section: Section) { return ({ dashboard: "Un panorama accionable para priorizar lo que necesita atención hoy.", inventory: "Controlá precios, categorías y existencias sin perder visibilidad de los mínimos.", pos: "Armá pedidos rápidos, asociá un cliente y confirmá el cobro en pocos pasos.", clients: "Una ficha única para los datos del tutor, mascotas e historial de compras.", agenda: "Organizá cada servicio del día y actualizá su estado al momento de atender.", alerts: "Configurá y revisá los avisos operativos del responsable del pet shop.", guide: "Conocé el recorrido recomendado para aprovechar PetFlow desde el primer día." })[section]; }
+function subtitle(section: Section) { return ({ dashboard: "Un panorama accionable para priorizar lo que necesita atención hoy.", inventory: "Controlá precios, categorías y existencias sin perder visibilidad de los mínimos.", pos: "Armá pedidos rápidos, asociá un cliente y confirmá el cobro en pocos pasos.", clients: "Una ficha única para los datos del tutor, mascotas e historial de compras.", agenda: "Organizá cada servicio del día y actualizá su estado al momento de atender.", alerts: "Configurá y revisá los avisos operativos del responsable del pet shop.", guide: "Conocé el recorrido recomendado para aprovechar PetFlow desde el primer día.", administration: "Gestioná el acceso al negocio con roles claros y permisos específicos." })[section]; }
 function Status({ status }: { status: string }) { const meta = statusMeta[status] ?? statusMeta.scheduled; return <span className={`status-badge ${meta.className}`}>{meta.label}</span>; }
 function Empty({ icon: Icon, title, text, action, onAction, compact = false }: any) { return <div className={cn("empty-state", compact && "empty-compact")}><div className="empty-icon"><Icon className="h-5 w-5" /></div><div><h4>{title}</h4><p>{text}</p>{action && <button onClick={onAction} className="inline-action">{action}<ChevronRight className="h-3.5 w-3.5" /></button>}</div></div>; }
 

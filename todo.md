@@ -26,3 +26,5 @@
 - [x] Generar, revisar y aplicar la migración PostgreSQL sin modificar la tabla preexistente `products`.
 - [x] Verificar Dashboard, Inventario, Clientes, Agenda, Alertas y el lookup del callback de Heartbeat contra Supabase.
 - [x] Documentar configuración de secretos, operación y plan de migración de datos históricos.
+- [x] Separar la navegación operativa de Administración y mantener un estado visual uniforme en Punto de venta.
+- [x] Añadir roles, permisos detallados, membresías de negocio y validación de permisos en el servidor.

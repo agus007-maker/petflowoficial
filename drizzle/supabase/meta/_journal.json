@@ -8,6 +8,13 @@
       "when": 1794841993224,
       "tag": "0000_magical_ares",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794925007384,
+      "tag": "0001_woozy_ronan",
+      "breakpoints": true
     }
   ]
 }

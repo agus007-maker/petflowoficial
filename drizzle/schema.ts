@@ -14,6 +14,8 @@ import {
 
 /** Core identity table managed by the Manus OAuth flow. */
 export const userRole = pgEnum("petflow_user_role", ["user", "admin"]);
+export const membershipRole = pgEnum("petflow_membership_role", ["owner", "manager", "cashier", "assistant", "viewer"]);
+export const membershipStatus = pgEnum("petflow_membership_status", ["active", "invited", "suspended"]);
 export const paymentMethod = pgEnum("petflow_payment_method", ["cash", "card", "transfer", "other"]);
 export const appointmentStatus = pgEnum("petflow_appointment_status", [
   "scheduled",
@@ -43,6 +45,39 @@ export const users = pgTable(
     lastSignedIn: timestamp("lastSignedIn", { withTimezone: true }).defaultNow().notNull(),
   },
   table => [index("petflow_users_open_id_idx").on(table.openId)],
+);
+
+export const shopMemberships = pgTable(
+  "petflow_shop_memberships",
+  {
+    id: serial("id").primaryKey(),
+    ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+    role: membershipRole("role").default("assistant").notNull(),
+    status: membershipStatus("status").default("active").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("petflow_shop_memberships_owner_user_unique").on(table.ownerUserId, table.userId),
+    index("petflow_shop_memberships_user_idx").on(table.userId),
+  ],
+);
+
+export const membershipPermissions = pgTable(
+  "petflow_membership_permissions",
+  {
+    id: serial("id").primaryKey(),
+    membershipId: integer("membershipId").notNull().references(() => shopMemberships.id, { onDelete: "cascade" }),
+    permission: varchar("permission", { length: 80 }).notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    createdAt: timestamp("createdAt", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true }).defaultNow().notNull(),
+  },
+  table => [
+    uniqueIndex("petflow_membership_permissions_unique").on(table.membershipId, table.permission),
+    index("petflow_membership_permissions_membership_idx").on(table.membershipId),
+  ],
 );
 
 export const products = pgTable(
