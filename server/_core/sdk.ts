@@ -256,6 +256,35 @@ class SDKServer {
   }
 
   async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
+    const authorization = req.headers.authorization;
+    if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
+      const accessToken = authorization.slice(7).trim();
+      if (accessToken) {
+        try {
+          const response = await fetch(`${ENV.supabaseUrl}/auth/v1/user`, {
+            headers: { apikey: ENV.supabasePublicKey, authorization: `Bearer ${accessToken}` },
+            signal: AbortSignal.timeout(10_000),
+          });
+          if (response.ok) {
+            const info = await response.json() as { id?: string; email?: string; user_metadata?: { name?: string; full_name?: string } };
+            if (info.id) {
+              const signedInAt = new Date();
+              await db.upsertUser({
+                openId: info.id,
+                name: info.user_metadata?.full_name ?? info.user_metadata?.name ?? info.email?.split("@")[0] ?? "PetFlow",
+                email: info.email ?? null,
+                loginMethod: "supabase",
+                lastSignedIn: signedInAt,
+              });
+              const user = await db.getUserByOpenId(info.id);
+              if (user) return user;
+            }
+          }
+        } catch (error) {
+          console.warn("[Auth] Supabase session validation failed", error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
     // 1. Prefer the session cookie (regular OAuth login).
     const cookies = this.parseCookies(req.headers.cookie);
     let sessionToken = cookies.get(COOKIE_NAME);

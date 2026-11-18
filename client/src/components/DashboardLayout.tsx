@@ -2,7 +2,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { startLogin } from "@/const";
+import { supabase, publicAppUrl } from "@/lib/supabase";
 import { useIsMobile } from "@/hooks/useMobile";
 import { LogOut, PanelLeft, PawPrint } from "lucide-react";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
@@ -44,11 +44,39 @@ export default function DashboardLayout({
   }, [sidebarWidth]);
 
   if (loading) return <DashboardLayoutSkeleton />;
-  if (!user) {
-    return <div className="petflow-login min-h-screen px-5 py-10"><div className="petflow-login-card"><div className="petflow-logo-mark"><PawPrint className="h-6 w-6" /></div><span className="eyebrow">PETFLOW</span><h1>Todo el ritmo de tu pet shop, en un solo lugar.</h1><p>Inicia sesión para administrar inventario, ventas, clientes, mascotas y agenda desde cualquier dispositivo.</p><Button onClick={() => startLogin()} size="lg" className="w-full bg-[#17483c] text-white hover:bg-[#0f382e]">Ingresar a PetFlow</Button></div></div>;
-  }
+  if (!user) return <LoginScreen />;
 
   return <SidebarProvider style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}><DashboardLayoutContent items={items} administrationItem={administrationItem} activeId={activeId} onNavigate={onNavigate} setSidebarWidth={setSidebarWidth}>{children}</DashboardLayoutContent></SidebarProvider>;
+}
+
+function LoginScreen() {
+  const [mode, setMode] = useState<"signin" | "signup" | "recovery">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  async function submit(event: React.FormEvent) {
+    event.preventDefault(); setBusy(true); setMessage(""); setError("");
+    try {
+      if (mode === "signin") {
+        const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        if (result.error) throw result.error;
+      } else if (mode === "signup") {
+        const result = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: publicAppUrl() } });
+        if (result.error) throw result.error;
+        setMessage(result.data.session ? "Cuenta creada. Preparando tu espacio…" : "Te enviamos un correo para confirmar la cuenta.");
+      } else {
+        const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: publicAppUrl() });
+        if (result.error) throw result.error;
+        setMessage("Si el correo existe, recibirás un enlace para restablecer la contraseña.");
+      }
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "No pudimos completar el acceso."); }
+    finally { setBusy(false); }
+  }
+  const title = mode === "signin" ? "Todo el ritmo de tu pet shop, en un solo lugar." : mode === "signup" ? "Crea tu cuenta de PetFlow." : "Recupera tu acceso a PetFlow.";
+  const description = mode === "signin" ? "Inicia sesión para administrar inventario, ventas, clientes, mascotas y agenda desde cualquier dispositivo." : mode === "signup" ? "Registra tu correo y crea una contraseña para comenzar a gestionar tu negocio." : "Te enviaremos un enlace seguro para elegir una nueva contraseña.";
+  return <div className="petflow-login min-h-screen px-5 py-10"><div className="petflow-login-card"><div className="petflow-logo-mark"><PawPrint className="h-6 w-6" /></div><span className="eyebrow">PETFLOW</span><h1>{title}</h1><p>{description}</p><form onSubmit={submit} className="mt-5 space-y-3"><label className="block text-left text-sm font-medium text-[#315248]">Correo electrónico<input required type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#cddbd3] bg-white px-3 py-2.5 outline-none focus:border-[#397360] focus:ring-2 focus:ring-[#b7d4c6]" placeholder="tu@email.com" /></label>{mode !== "recovery" && <label className="block text-left text-sm font-medium text-[#315248]">Contraseña<input required minLength={8} type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} value={password} onChange={event => setPassword(event.target.value)} className="mt-1.5 w-full rounded-xl border border-[#cddbd3] bg-white px-3 py-2.5 outline-none focus:border-[#397360] focus:ring-2 focus:ring-[#b7d4c6]" placeholder="••••••••" /></label>}<Button disabled={busy} size="lg" className="w-full bg-[#17483c] text-white hover:bg-[#0f382e]">{busy ? "Un momento…" : mode === "signin" ? "Ingresar a PetFlow" : mode === "signup" ? "Crear cuenta" : "Enviar enlace"}</Button></form>{message && <p className="mt-4 text-sm text-[#28604f]" role="status">{message}</p>}{error && <p className="mt-4 text-sm text-[#a14e45]" role="alert">{error}</p>}<div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm"><button type="button" className="text-[#28604f] underline underline-offset-4" onClick={() => { setMode(mode === "signin" ? "recovery" : "signin"); setError(""); }}>{mode === "signin" ? "¿Olvidaste tu contraseña?" : "Volver a iniciar sesión"}</button>{mode === "signin" && <button type="button" className="text-[#28604f] underline underline-offset-4" onClick={() => setMode("signup")}>Crear cuenta</button>}</div></div></div>;
 }
 
 function DashboardLayoutContent({
