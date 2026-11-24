@@ -62,6 +62,9 @@ function LoginScreen() {
       if (mode === "signin") {
         const result = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (result.error) throw result.error;
+        // Garantiza que la sesión persistida y el cliente API queden listos
+        // antes de renderizar las vistas protegidas del dashboard.
+        window.location.reload();
       } else if (mode === "signup") {
         const result = await supabase.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: publicAppUrl() } });
         if (result.error) throw result.error;
